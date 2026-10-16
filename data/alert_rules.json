@@ -1,0 +1,7 @@
+{
+ "fall_from_high": [20, 30, 40],
+ "day_move": 5,
+ "holding_loss": 15,
+ "targets": [],
+ "daily_summary": true
+}

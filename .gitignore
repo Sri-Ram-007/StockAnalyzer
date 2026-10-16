@@ -1,0 +1,15 @@
+# Python environment and caches
+.venv/
+__pycache__/
+*.pyc
+
+# Downloaded market data (re-created automatically)
+data/*
+# ...but keep your own lists so the daily GitHub job can read them
+!data/portfolio.json
+!data/watchlist.json
+!data/alert_rules.json
+
+# Never upload passwords or bot tokens
+data/alerts_config.json
+app_phase2_backup.py
