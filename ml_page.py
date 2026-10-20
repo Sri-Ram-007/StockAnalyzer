@@ -193,8 +193,17 @@ def single_stock(ticker, name, close, index, index_name):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     p = r["probability"]
+    if r["similar_n"]:
+        check = (f'<br><b>Reality check:</b> in the test years, when the model said about {p:.0%} '
+                 f'({max(p - .1, 0):.0%}–{min(p + .1, 1):.0%}), the outcome actually happened '
+                 f'<b>{r["similar_hit"]:.0%}</b> of the time (average move {r["similar_avg"]:+.1%}, '
+                 f'about {max(r["similar_periods"], 1)} separate 3-month periods).')
+    else:
+        check = (f'<br><b>Reality check:</b> the model never gave a number this high or low in its test years, '
+                 f'so there is no record of how such calls turned out.')
     st.markdown(f'<div class="insight"><b>Today ({r["latest_date"]}):</b> the model gives a <b>{p:.0%}</b> chance that '
-                f'{name} is {q.replace("higher", "higher").replace("beats", "beating")}.'
-                f'<br><span class="muted">{"Its test record above is decent, but" if beats and enough else "Given its test record,"} '
-                f'treat this as a rough signal, not a forecast.</span></div>', unsafe_allow_html=True)
+                f'{name} is {q.replace("beats", "beating")}.{check}'
+                f'<br><span class="muted">{"Its test record above is decent, but" if beats and enough else "Because the test above is red/amber,"} '
+                f'this is not a reliable forecast: its percentages are not real-world odds.</span></div>',
+                unsafe_allow_html=True)
     st.caption("Past prices only; news, results and fundamentals are not used. Not investment advice.")

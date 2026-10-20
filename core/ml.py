@@ -257,7 +257,12 @@ def single_stock_test(close: pd.Series, index: pd.Series, target: str = "up", ev
     said_up, said_down = allp[allp["p"] >= 0.5], allp[allp["p"] < 0.5]
     final = _single_model().fit(labelled[X_cols], labelled["y"])
     latest = data[X_cols].iloc[[-1]]
+    prob = float(final.predict_proba(latest)[:, 1][0])
+    similar = allp[(allp["p"] - prob).abs() <= 0.1]  # past test calls with about the same confidence
     return {
+        "similar_n": int(len(similar)), "similar_periods": int(len(similar) * every / HORIZON),
+        "similar_hit": float(similar["y"].mean()) if len(similar) else None,
+        "similar_avg": float(similar["fwd"].mean()) if len(similar) else None,
         "target": target, "target_label": TARGETS[target], "test_years": [int(y) for y in allp["year"].unique()],
         "test_rows": int(len(allp)), "accuracy": float(((allp["p"] >= 0.5) == allp["y"]).mean()),
         "periods": int(len(allp) * every / HORIZON),  # roughly independent 3-month periods in the test
@@ -269,5 +274,5 @@ def single_stock_test(close: pd.Series, index: pd.Series, target: str = "up", ev
         "avg_when_down": float(said_down["fwd"].mean()) if len(said_down) else None, "n_down": int(len(said_down)),
         "avg_all": float(allp["fwd"].mean()), "per_year": per_year,
         "latest_date": str(data.index.get_level_values("date")[-1].date()),
-        "probability": float(final.predict_proba(latest)[:, 1][0]),
+        "probability": prob,
     }
