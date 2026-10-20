@@ -139,7 +139,7 @@ def stock_box(list_name, ticker):
 
 
 @st.cache_data(ttl=12 * 3600, show_spinner=False)
-def _single(ticker, _close, _index, target, last_date):
+def _single(ticker, _close, _index, target, last_date, version=2):
     from core.ml import single_stock_test
     return single_stock_test(_close, _index, target)
 
@@ -193,7 +193,7 @@ def single_stock(ticker, name, close, index, index_name):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     p = r["probability"]
-    if r["similar_n"]:
+    if r.get("similar_n"):
         check = (f'<br><b>Reality check:</b> in the test years, when the model said about {p:.0%} '
                  f'({max(p - .1, 0):.0%}–{min(p + .1, 1):.0%}), the outcome actually happened '
                  f'<b>{r["similar_hit"]:.0%}</b> of the time (average move {r["similar_avg"]:+.1%}, '
