@@ -100,7 +100,6 @@ h3 { letter-spacing: -.01em; }
   .st-key-idxstrip .idx-name { font-size: .58rem; } .st-key-idxstrip .idx-val { font-size: .8rem; }
   .st-key-idxstrip .pill { font-size: .62rem; padding: 1px 5px; } .st-key-idxstrip svg { display: none; }
   .price-big { font-size: 1.8rem; }
-  [class*="st-key-card_"] .avatar { display: none; }
   [class*="st-key-card_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
   [class*="st-key-card_"] [data-testid="stColumn"] { min-width: 0 !important; }
 }
@@ -148,6 +147,7 @@ _AVATAR_COLORS = ["#0f766e", "#2563eb", "#7c3aed", "#db2777", "#ea580c", "#0891b
 
 
 def avatar(name):
+    return ""  # initials badges switched off (cleaner look)
     words = [w for w in str(name).replace("&", " ").split() if w[0].isalnum()]
     initials = "".join(w[0] for w in words[:2]).upper() or "?"
     color = _AVATAR_COLORS[int(hashlib.md5(str(name).encode()).hexdigest(), 16) % len(_AVATAR_COLORS)]
