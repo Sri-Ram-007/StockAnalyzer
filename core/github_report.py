@@ -25,10 +25,12 @@ def post_issue(text: str) -> str:
         return "GitHub report: skipped (only runs inside GitHub Actions)"
     api = f"https://api.github.com/repos/{repo}"
     h = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
-    # close earlier daily reports
-    old = requests.get(f"{api}/issues", headers=h, params={"labels": LABEL, "state": "open", "per_page": 50}, timeout=20)
+    # close earlier daily reports (matched by title, so it works even if labels are not allowed)
+    old = requests.get(f"{api}/issues", headers=h, params={"state": "open", "per_page": 100}, timeout=20)
     for issue in old.json() if old.ok else []:
-        requests.patch(f"{api}/issues/{issue['number']}", headers=h, json={"state": "closed"}, timeout=20)
+        if issue.get("title", "").startswith("📈 Stock Analyzer") and "pull_request" not in issue:
+            requests.patch(f"{api}/issues/{issue['number']}", headers=h, json={"state": "closed"}, timeout=20)
+    requests.post(f"{api}/labels", headers=h, json={"name": LABEL, "color": "1a7f5a"}, timeout=20)  # ok if it exists
     body = html_to_markdown(text)
     title = f"📈 Stock Analyzer · {pd.Timestamp.now(tz='Asia/Kolkata'):%d %b %Y}"
     r = requests.post(f"{api}/issues", headers=h, json={"title": title, "body": body, "labels": [LABEL]}, timeout=20)
