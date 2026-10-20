@@ -20,6 +20,7 @@ from core.funds import sip_simulation
 from core.news import get_news, news_query
 from core.sectors import sector_table
 import ml_page
+import ui
 import portfolio_page
 from core.recovery import (YEAR, base_rates, biggest_one_day_drop, current_drawdown, history_threshold,
                            recovery_episodes, recovery_stats, scan)
@@ -37,39 +38,7 @@ MARKETS = {
 }
 TOP = {"India": "India", "US": "US", "Funds": "Mutual Funds", "Global": "🌍 Global", "IPO": "🆕 IPOs", "Portfolio": "💼 Portfolio", "Insurance": "🛡️ Insurance"}
 
-st.markdown(f"""
-<style>
-  #MainMenu, footer, [data-testid="stDecoration"] {{ display: none; }}
-  .block-container {{ padding-top: 4.6rem; max-width: 1250px; }}  /* room for Streamlit Cloud's top bar */
-  .brand {{ font-size: 1.45rem; font-weight: 700; color: #111827; padding-top: 2px; }}
-  .idx-card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 14px; background: #fff; }}
-  .idx-name {{ font-size: .78rem; color: {MUTED}; font-weight: 600; letter-spacing: .02em; }}
-  .idx-val {{ font-size: 1.05rem; font-weight: 600; color: #111827; }}
-  .up {{ color: {GREEN}; }} .down {{ color: {RED}; }}
-  .price-big {{ font-size: 2.1rem; font-weight: 700; color: #111827; line-height: 1.1; }}
-  .chg {{ font-size: 1rem; font-weight: 600; }}
-  .muted {{ color: {MUTED}; font-size: .9rem; }}
-  .stat-label {{ color: {MUTED}; font-size: .8rem; }}
-  .stat-val {{ font-weight: 600; font-size: 1rem; color: #111827; }}
-  .insight {{ border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background: #fafbfc; }}
-  .range-track {{ position: relative; height: 6px; background: #e5e7eb; border-radius: 4px; margin: 10px 0 4px; }}
-  .range-dot {{ position: absolute; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: #111827;
-               border: 3px solid #fff; box-shadow: 0 0 0 1px #d1d5db; }}
-  div[data-testid="stButton"] button[kind="tertiary"] {{ justify-content: flex-start; width: 100%; padding: 6px 4px; }}
-  div[data-testid="stButton"] button[kind="tertiary"]:hover {{ background: #f3f4f6; }}
-  [data-testid="stButtonGroup"] > div {{ flex-wrap: wrap; }}
-  @media (max-width: 640px) {{
-    .block-container {{ padding-left: .7rem; padding-right: .7rem; padding-top: 4rem; }}
-    .brand {{ font-size: 1.2rem; }}
-    .st-key-idxstrip [data-testid="stHorizontalBlock"] {{ flex-wrap: nowrap !important; gap: .35rem; }}
-    .st-key-idxstrip [data-testid="stColumn"] {{ min-width: 0 !important; width: auto !important; flex: 1 1 0 !important; }}
-    .st-key-idxstrip .idx-card {{ padding: 6px 7px; }}
-    .st-key-idxstrip .idx-name {{ font-size: .62rem; }}
-    .st-key-idxstrip .idx-val {{ font-size: .78rem; }}
-    .st-key-idxstrip .chg {{ display: block; font-size: .7rem; }}
-    .price-big {{ font-size: 1.7rem; }}
-  }}
-</style>""", unsafe_allow_html=True)
+ui.start_run()
 
 
 # ---------------- Cached loaders ----------------
@@ -206,12 +175,12 @@ def index_strip(indices):
         df = load_ohlc(tk)
         if len(df) >= 2:
             last, prev = float(df["Close"].iloc[-1]), float(df["Close"].iloc[-2])
-            quotes.append((name, last, last - prev, last / prev - 1))
+            quotes.append((name, last, last / prev - 1, df["Close"].iloc[-22:].tolist()))
     if quotes:
         box = st.container(key="idxstrip")
-        for c, (name, val, ch, p) in zip(box.columns(len(quotes)), quotes):
-            c.markdown(f'<div class="idx-card"><div class="idx-name">{name}</div><div class="idx-val">{val:,.2f} '
-                       f'<span class="chg {cls(p)}">{ch:+,.2f} ({p:+.2%})</span></div></div>', unsafe_allow_html=True)
+        for c, (name, val, p, hist) in zip(box.columns(len(quotes)), quotes):
+            c.markdown(f'<div class="idx-card"><div><div class="idx-name">{name}</div><div class="idx-val">{val:,.2f}</div>'
+                       f'{ui.pill(p)}</div>{ui.sparkline(hist)}</div>', unsafe_allow_html=True)
 
 
 # ---------------- State ----------------
@@ -238,8 +207,9 @@ def open_fund(code):
 
 
 # ---------------- Header ----------------
-h1, h2 = st.columns([2, 5])
-h1.markdown('<div class="brand">📈 Stock Analyzer</div>', unsafe_allow_html=True)
+h1, h2 = st.columns([2, 5], vertical_alignment="center")
+h1.markdown('<div class="brand-wrap"><div class="brand-logo">SA</div><div><div class="brand">Stock Analyzer</div>'
+            '<div class="brand-sub">Markets · Funds · IPOs · Portfolio · Insurance</div></div></div>', unsafe_allow_html=True)
 mk = h2.segmented_control("Market", list(TOP), default=ss.market, format_func=lambda k: TOP[k],
                           key=f"mk_{ss.market}", label_visibility="collapsed")
 if mk and mk != ss.market:
@@ -341,27 +311,26 @@ if market in ("India", "US", "Global"):
             if t not in day.index:
                 continue
             r = day.loc[t]
-            val = extra(t) if extra else pct(r["chg"], True, 2)
-            color = ("green" if r["chg"] >= 0 else "red") if extra is None else "gray"
-            st.button(f"**{names.get(t, t)}**  ·  {money(r['price'], cur)}  ·  :{color}[{val}]",
-                      key=f"{key}_{t}", type="tertiary", on_click=open_stock, args=(t,))
+            right = (f'<span class="row-sub">{extra(t)}</span>' if extra else ui.pill(r["chg"]))
+            ui.list_row(names.get(t, t), t.replace(".NS", "").replace(".BO", " · BSE"), money(r["price"], cur), right,
+                        f"{key}_{t}", open_stock, (t,))
 
     # ---------- Explore ----------
     if ss.page == "Explore":
         a, b = st.columns(2)
-        with a.container(border=True):
-            st.markdown("**Top gainers today**")
+        with ui.card(a):
+            st.markdown('<div class="card-title">Top gainers today</div>', unsafe_allow_html=True)
             stock_rows(day.sort_values("chg", ascending=False).index[:6], key="gain")
-        with b.container(border=True):
-            st.markdown("**Top losers today**")
+        with ui.card(b):
+            st.markdown('<div class="card-title">Top losers today</div>', unsafe_allow_html=True)
             stock_rows(day.sort_values("chg").index[:6], key="lose")
         c, d = st.columns(2)
-        with c.container(border=True):
-            st.markdown("**Biggest falls from 1-year high**")
+        with ui.card(c):
+            st.markdown('<div class="card-title">Biggest falls from 1-year high</div>', unsafe_allow_html=True)
             clean = scan_all[~scan_all["corporate_action_flag"]].sort_values("drawdown")
             stock_rows(clean.index[:6], extra=lambda t: f"{scan_all.loc[t, 'drawdown']:.0%} from high", key="fall")
-        with d.container(border=True):
-            st.markdown("**Near 1-year high**")
+        with ui.card(d):
+            st.markdown('<div class="card-title">Near 1-year high</div>', unsafe_allow_html=True)
             stock_rows(scan_all.sort_values("drawdown", ascending=False).index[:6],
                        extra=lambda t: f"{scan_all.loc[t, 'drawdown']:.0%} from high", key="near")
         st.caption(f"Showing: {list_name}. Change the list in ⚙️ Settings. Click any row to open it. Not investment advice.")
@@ -372,10 +341,10 @@ if market in ("India", "US", "Global"):
             results = load_search(q)
             if not results:
                 st.info("No stocks or ETFs found. Try another name or a ticker symbol.")
-            with st.container(border=True):
+            with ui.card():
                 for r in results:
-                    st.button(f"**{r['name']}**  ·  {r['ticker']}  ·  :gray[{r['exchange']} · {r['type'].title()}]",
-                              key=f"g_{r['ticker']}", type="tertiary", on_click=open_stock, args=(r["ticker"], r["name"]))
+                    ui.list_row(r["name"], f"{r['ticker']} · {r['exchange']}", r["type"].title(), "",
+                                f"g_{r['ticker']}", open_stock, (r["ticker"], r["name"]))
         else:
             st.info("Type a company name above. Works for stocks and ETFs on most exchanges: US, UK, Europe, Japan, "
                     "Korea, Hong Kong and more. Indian stocks are under India.")
@@ -532,16 +501,14 @@ if market in ("India", "US", "Global"):
         if not ss.watchlist:
             st.info("Your watchlist is empty. Open any stock or ETF and tap ☆ Add to watchlist.")
         else:
-            with st.container(border=True):
+            with ui.card():
                 for t in ss.watchlist:
                     o = load_ohlc(t)
                     if len(o) < 2:
                         continue
                     p, pv = float(o["Close"].iloc[-1]), float(o["Close"].iloc[-2])
-                    c = load_currency(t)
-                    st.button(f"**{names.get(t, ss.extra_names.get(t, t))}**  ·  {money(p, c)}  ·  "
-                              f":{'green' if p >= pv else 'red'}[{pct(p / pv - 1, True, 2)}]",
-                              key=f"w_{t}", type="tertiary", on_click=open_stock, args=(t,))
+                    ui.list_row(names.get(t, ss.extra_names.get(t, t)), t, money(p, load_currency(t)), ui.pill(p / pv - 1),
+                                f"w_{t}", open_stock, (t,))
 
     # ---------- Stock page ----------
     elif ss.page == "Stock" and ss.ticker:
@@ -557,178 +524,185 @@ if market in ("India", "US", "Global"):
         chg = price / prev - 1
         is_etf = known_etf(t, names.get(t, ""))
 
-        top_l, top_r = st.columns([5, 1.4])
-        top_l.markdown(f"### {names.get(t, t)}")
-        top_l.markdown(f'<span class="muted">{t} · {"ETF" if is_etf else industries.get(t, "")}</span>', unsafe_allow_html=True)
+        top_l, top_r = st.columns([5, 1.4], vertical_alignment="center")
+        sector_chip = f'<span class="chip">{"ETF" if is_etf else industries.get(t, "")}</span>' if (is_etf or industries.get(t)) else ""
+        top_l.markdown(f'<div class="row">{ui.avatar(names.get(t, t))}<div><div style="font-size:1.45rem; font-weight:800; '
+                       f'color:#0f172a; line-height:1.15">{names.get(t, t)}</div><span class="chip">{t}</span>{sector_chip}</div></div>',
+                       unsafe_allow_html=True)
         in_list = t in ss.watchlist
         if top_r.button("★ In watchlist" if in_list else "☆ Add to watchlist", use_container_width=True):
             ss.watchlist = [x for x in ss.watchlist if x != t] if in_list else ss.watchlist + [t]
             save_watchlist(ss.watchlist)
             st.rerun()
-        st.markdown(f'<div class="price-big">{money(price, scur)}</div>'
-                    f'<div class="chg {cls(chg)}">{price - prev:+,.2f} ({chg:+.2%}) on {s.index[-1]:%d %b}</div>',
-                    unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; align-items:baseline; gap:12px; margin-top:8px">'
+                    f'<div class="price-big">{money(price, scur)}</div>{ui.pill(chg)}'
+                    f'<span class="muted">{price - prev:+,.2f} · {s.index[-1]:%d %b %Y}</span></div>', unsafe_allow_html=True)
+        tab_over, tab_rec, tab_health, tab_news = st.tabs(["📊 Overview", "📉 Recovery", "🩺 Health & score", "📰 News"])
 
-        period = st.segmented_control("Period", ["1M", "6M", "1Y", "3Y", "5Y", "MAX"], default="1Y", label_visibility="collapsed")
-        days = {"1M": 31, "6M": 183, "1Y": 366, "3Y": 1098, "5Y": 1830, "MAX": 36600}[period or "1Y"]
-        data = ohlc if not ohlc.empty else s.to_frame("Close")
-        data = data[data.index >= data.index.max() - pd.Timedelta(days=days)]
-        up_period = data["Close"].iloc[-1] >= data["Close"].iloc[0]
-        fig = go.Figure()
-        if {"Open", "High", "Low"} <= set(data.columns) and days <= 366:
-            fig.add_trace(go.Candlestick(x=data.index, open=data["Open"], high=data["High"], low=data["Low"], close=data["Close"],
-                                         increasing_line_color=GREEN, decreasing_line_color=RED, name="Price"))
-        else:
-            fig.add_trace(go.Scatter(x=data.index, y=data["Close"], line=dict(color=GREEN if up_period else RED, width=2),
-                                     fill="tozeroy", fillcolor="rgba(26,127,90,0.08)" if up_period else "rgba(214,58,58,0.08)"))
-        fig.add_hline(y=now["high"], line_dash="dot", line_color="#9ca3af",
-                      annotation_text=f"1-yr closing high {money(now['high'], scur)}", annotation_position="top left")
-        lo = data["Low"].min() if "Low" in data else data["Close"].min()
-        hi = max(data["High"].max() if "High" in data else data["Close"].max(), now["high"])
-        fig.update_layout(height=420, margin=dict(l=0, r=0, t=10, b=0), xaxis_rangeslider_visible=False, showlegend=False,
-                          plot_bgcolor="white", hovermode="x unified",
-                          yaxis=dict(range=[lo * 0.97, hi * 1.03], gridcolor="#f0f0f0", side="right"), xaxis=dict(gridcolor="#f7f7f7"))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        with tab_over:
+            period = st.segmented_control("Period", ["1M", "6M", "1Y", "3Y", "5Y", "MAX"], default="1Y", label_visibility="collapsed")
+            days = {"1M": 31, "6M": 183, "1Y": 366, "3Y": 1098, "5Y": 1830, "MAX": 36600}[period or "1Y"]
+            data = ohlc if not ohlc.empty else s.to_frame("Close")
+            data = data[data.index >= data.index.max() - pd.Timedelta(days=days)]
+            up_period = data["Close"].iloc[-1] >= data["Close"].iloc[0]
+            fig = go.Figure()
+            if {"Open", "High", "Low"} <= set(data.columns) and days <= 366:
+                fig.add_trace(go.Candlestick(x=data.index, open=data["Open"], high=data["High"], low=data["Low"], close=data["Close"],
+                                             increasing_line_color=GREEN, decreasing_line_color=RED, name="Price"))
+            else:
+                fig.add_trace(go.Scatter(x=data.index, y=data["Close"], line=dict(color=GREEN if up_period else RED, width=2),
+                                         fill="tozeroy", fillcolor="rgba(26,127,90,0.08)" if up_period else "rgba(214,58,58,0.08)"))
+            fig.add_hline(y=now["high"], line_dash="dot", line_color="#9ca3af",
+                          annotation_text=f"1-yr closing high {money(now['high'], scur)}", annotation_position="top left")
+            lo = data["Low"].min() if "Low" in data else data["Close"].min()
+            hi = max(data["High"].max() if "High" in data else data["Close"].max(), now["high"])
+            fig.update_layout(height=420, margin=dict(l=0, r=0, t=10, b=0), xaxis_rangeslider_visible=False, showlegend=False,
+                              plot_bgcolor="white", hovermode="x unified",
+                              yaxis=dict(range=[lo * 0.97, hi * 1.03], gridcolor="#f0f0f0", side="right"), xaxis=dict(gridcolor="#f7f7f7"))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-        yr = ohlc[ohlc.index >= ohlc.index.max() - pd.Timedelta(days=366)] if not ohlc.empty else s.to_frame("Close")
-        low52 = float(yr["Low"].min() if "Low" in yr else yr["Close"].min())
-        high52 = float(yr["High"].max() if "High" in yr else yr["Close"].max())
-        bar = ohlc.iloc[-1] if not ohlc.empty else None
-        stats = [("Open", money(bar["Open"], scur) if bar is not None else "–"),
-                 ("Day high", money(bar["High"], scur) if bar is not None else "–"),
-                 ("Day low", money(bar["Low"], scur) if bar is not None else "–"),
-                 ("Prev. close", money(prev, scur)),
-                 ("200-day average", money(s.rolling(200).mean().iloc[-1], scur)),
-                 ("Down from 1-yr closing high", pct(now["drawdown"], digits=1))]
-        for c, (lab, val) in zip(st.columns(len(stats)), stats):
-            c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val">{val}</div>', unsafe_allow_html=True)
-        pos = 0 if high52 == low52 else (price - low52) / (high52 - low52)
-        st.markdown(f"""<div style="margin-top:14px" class="stat-label">52-week range (intraday)</div>
-            <div class="range-track"><div class="range-dot" style="left: calc({pos * 100:.1f}% - 8px)"></div></div>
-            <div style="display:flex; justify-content:space-between" class="muted"><span>Low {money(low52, scur)}</span>
-            <span>High {money(high52, scur)}</span></div>""", unsafe_allow_html=True)
+            yr = ohlc[ohlc.index >= ohlc.index.max() - pd.Timedelta(days=366)] if not ohlc.empty else s.to_frame("Close")
+            low52 = float(yr["Low"].min() if "Low" in yr else yr["Close"].min())
+            high52 = float(yr["High"].max() if "High" in yr else yr["Close"].max())
+            bar = ohlc.iloc[-1] if not ohlc.empty else None
+            stats = [("Open", money(bar["Open"], scur) if bar is not None else "–"),
+                     ("Day high", money(bar["High"], scur) if bar is not None else "–"),
+                     ("Day low", money(bar["Low"], scur) if bar is not None else "–"),
+                     ("Prev. close", money(prev, scur)),
+                     ("200-day average", money(s.rolling(200).mean().iloc[-1], scur)),
+                     ("Down from 1-yr closing high", pct(now["drawdown"], digits=1))]
+            for c, (lab, val) in zip(st.columns(len(stats)), stats):
+                c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val">{val}</div>', unsafe_allow_html=True)
+            pos = 0 if high52 == low52 else (price - low52) / (high52 - low52)
+            st.markdown(f"""<div style="margin-top:14px" class="stat-label">52-week range (intraday)</div>
+                <div class="range-track"><div class="range-dot" style="left: calc({pos * 100:.1f}% - 8px)"></div></div>
+                <div style="display:flex; justify-content:space-between" class="muted"><span>Low {money(low52, scur)}</span>
+                <span>High {money(high52, scur)}</span></div>""", unsafe_allow_html=True)
 
-        fund = {}
-        if not is_etf:
-            with st.spinner("Loading company financials…"):
-                fund = load_fund(t, s)
-            if fund.get("ok"):
-                mc, fcur = fund.get("marketCap"), scur
-                mc_txt = (f"₹{mc / 1e7:,.0f} Cr" if scur == "₹" else f"{fcur}{mc / 1e9:,.1f} B") if mc else "–"
-                snap = [("Market cap", mc_txt),
-                        ("P/E ratio", f"{fund['trailingPE']:.1f}" if fund.get("trailingPE") else "–"),
-                        ("Price / book", f"{fund['priceToBook']:.1f}" if fund.get("priceToBook") else "–"),
-                        ("Dividend yield", f"{fund['dividendYield']:.2f}%" if fund.get("dividendYield") is not None else "–"),
-                        ("Profit margin", pct(fund.get("profitMargins"))),
-                        ("Sector", fund.get("sector") or "–")]
+            fund = {}
+            if not is_etf:
+                with st.spinner("Loading company financials…"):
+                    fund = load_fund(t, s)
+                if fund.get("ok"):
+                    mc, fcur = fund.get("marketCap"), scur
+                    mc_txt = (f"₹{mc / 1e7:,.0f} Cr" if scur == "₹" else f"{fcur}{mc / 1e9:,.1f} B") if mc else "–"
+                    snap = [("Market cap", mc_txt),
+                            ("P/E ratio", f"{fund['trailingPE']:.1f}" if fund.get("trailingPE") else "–"),
+                            ("Price / book", f"{fund['priceToBook']:.1f}" if fund.get("priceToBook") else "–"),
+                            ("Dividend yield", f"{fund['dividendYield']:.2f}%" if fund.get("dividendYield") is not None else "–"),
+                            ("Profit margin", pct(fund.get("profitMargins"))),
+                            ("Sector", fund.get("sector") or "–")]
+                    st.write("")
+                    for c, (lab, val) in zip(st.columns(len(snap)), snap):
+                        c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val">{val}</div>', unsafe_allow_html=True)
+
+        with tab_rec:
+            # Recovery insight
+            st.write("")
+            st.markdown("#### Recovery insight")
+            stt, thr, rates = None, None, {}
+            if now["drawdown"] > -0.10:
+                st.markdown(f'<div class="insight">It is <b>{abs(now["drawdown"]):.0%} below</b> its 1-year closing high of '
+                            f'<b>{money(now["high"], scur)}</b>, so it is trading close to its high. The recovery analysis is for '
+                            f'prices that have fallen 10% or more.</div>', unsafe_allow_html=True)
+            else:
+                thr = history_threshold(now["drawdown"])
+                eps = recovery_episodes(s, thr)
+                stt = recovery_stats(eps)
+                rates = load_base_rates(list_name, closes, version).set_index("threshold")["recovery_rate"].to_dict()
+                if stt["episodes"] == 0:
+                    hist = (f"In the last {len(s) / YEAR:.0f} years it has <b>never fallen {thr:.0%} or more</b> before, "
+                            "so there is no past example to learn from.")
+                else:
+                    rec = int(round(stt["recovery_rate"] * stt["episodes"]))
+                    word = "it took about" if rec == 1 else "typically in about"
+                    timing = f", {word} <b>{stt['median_days'] / 30.4:.0f} months</b>" if rec else ""
+                    hist = (f"In the last {len(s) / YEAR:.0f} years it fell {thr:.0%} or more <b>{stt['episodes']} time"
+                            f"{'s' if stt['episodes'] != 1 else ''}</b> and got back to its old high <b>{rec} of those times</b>{timing}.")
+                base = rates.get(thr)
+                base_txt = (f" Across the {len(closes.columns)} names in {list_name}, falls this big recovered <b>{base:.0%}</b> "
+                            "of the time within 2 years.") if base is not None and not pd.isna(base) else ""
+                warn = ('<br><br>⚠️ <b>Check corporate actions:</b> a one-day fall of 30%+ in the last year usually means a '
+                        'demerger or split, so this fall may not be real.') if biggest_one_day_drop(s) <= -0.30 else ""
+                st.markdown(f"""<div class="insight">It is <b>{abs(now['drawdown']):.0%} below</b> its 1-year closing high of
+                    <b>{money(now['high'], scur)}</b> (reached {now['high_date']:%d %b %Y}). To get back there it needs to rise
+                    <b>{now['gain_to_recover']:.0%}</b>.<br><br>{hist}{base_txt}{warn}
+                    <br><br><span class="muted">Past recoveries are evidence, not a promise.</span></div>""", unsafe_allow_html=True)
+                if not eps.empty:
+                    with st.expander("See every past fall"):
+                        st.dataframe(pd.DataFrame({
+                            "Fall started": eps["start"].dt.strftime("%d %b %Y"),
+                            "Price then": eps["price_at_start"].map(lambda v: money(v, scur)),
+                            "Old high": eps["old_high"].map(lambda v: money(v, scur)),
+                            "Got back to old high?": eps["recovered"].map({True: "Yes", False: "No (within 2 yrs)"}),
+                            "Time taken": (eps["days_to_recover"] / 30.4).map(lambda m: "–" if pd.isna(m) else f"{m:.0f} months"),
+                            "Fell further first": eps["further_drop"].map(lambda v: f"{v:.0%}"),
+                        }), hide_index=True, use_container_width=True)
+
+        with tab_health:
+            # Business health + score
+            checks = []
+            if is_etf:
+                st.info("This is an ETF: it holds a basket of stocks or assets, so company health checks don't apply. "
+                        "Use the recovery insight above and compare it with similar ETFs.")
+            else:
                 st.write("")
-                for c, (lab, val) in zip(st.columns(len(snap)), snap):
-                    c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val">{val}</div>', unsafe_allow_html=True)
+                st.markdown("#### Business health check")
+                ref_market = cfg["benchmark"] if market != "Global" else None
+                bench = load_ohlc(ref_market) if ref_market else pd.DataFrame()
+                market_dd = current_drawdown(bench["Close"]).get("drawdown") if not bench.empty else None
+                ind = industries.get(t)
+                peers = [p for p in scan_all.index if industries.get(p) == ind and p != t] if ind else []
+                peer_dd = float(scan_all.loc[peers, "drawdown"].median()) if len(peers) >= 3 else None
+                if not fund.get("ok"):
+                    st.info("Company financials are not available on Yahoo Finance for this stock.")
+                else:
+                    checks = health_checks(fund, now["drawdown"] if now["drawdown"] <= -0.10 else None, peer_dd, market_dd)
+                    icons = {"pass": "✅", "warn": "⚠️", "fail": "❌", "na": "➖"}
+                    st.markdown('<div class="insight">' + "".join(
+                        f'<div style="padding:7px 0; border-bottom:1px solid #eef0f2">{icons[c["status"]]} <b>{c["check"]}</b>'
+                        f'<span class="muted"> · {c["detail"]}</span></div>' for c in checks) + "</div>", unsafe_allow_html=True)
+                    st.caption("✅ good · ⚠️ watch · ❌ warning sign · ➖ not available. From Yahoo Finance; check the latest results too.")
 
-        # Recovery insight
-        st.write("")
-        st.markdown("#### Recovery insight")
-        stt, thr, rates = None, None, {}
-        if now["drawdown"] > -0.10:
-            st.markdown(f'<div class="insight">It is <b>{abs(now["drawdown"]):.0%} below</b> its 1-year closing high of '
-                        f'<b>{money(now["high"], scur)}</b>, so it is trading close to its high. The recovery analysis is for '
-                        f'prices that have fallen 10% or more.</div>', unsafe_allow_html=True)
-        else:
-            thr = history_threshold(now["drawdown"])
-            eps = recovery_episodes(s, thr)
-            stt = recovery_stats(eps)
-            rates = load_base_rates(list_name, closes, version).set_index("threshold")["recovery_rate"].to_dict()
-            if stt["episodes"] == 0:
-                hist = (f"In the last {len(s) / YEAR:.0f} years it has <b>never fallen {thr:.0%} or more</b> before, "
-                        "so there is no past example to learn from.")
-            else:
-                rec = int(round(stt["recovery_rate"] * stt["episodes"]))
-                word = "it took about" if rec == 1 else "typically in about"
-                timing = f", {word} <b>{stt['median_days'] / 30.4:.0f} months</b>" if rec else ""
-                hist = (f"In the last {len(s) / YEAR:.0f} years it fell {thr:.0%} or more <b>{stt['episodes']} time"
-                        f"{'s' if stt['episodes'] != 1 else ''}</b> and got back to its old high <b>{rec} of those times</b>{timing}.")
-            base = rates.get(thr)
-            base_txt = (f" Across the {len(closes.columns)} names in {list_name}, falls this big recovered <b>{base:.0%}</b> "
-                        "of the time within 2 years.") if base is not None and not pd.isna(base) else ""
-            warn = ('<br><br>⚠️ <b>Check corporate actions:</b> a one-day fall of 30%+ in the last year usually means a '
-                    'demerger or split, so this fall may not be real.') if biggest_one_day_drop(s) <= -0.30 else ""
-            st.markdown(f"""<div class="insight">It is <b>{abs(now['drawdown']):.0%} below</b> its 1-year closing high of
-                <b>{money(now['high'], scur)}</b> (reached {now['high_date']:%d %b %Y}). To get back there it needs to rise
-                <b>{now['gain_to_recover']:.0%}</b>.<br><br>{hist}{base_txt}{warn}
-                <br><br><span class="muted">Past recoveries are evidence, not a promise.</span></div>""", unsafe_allow_html=True)
-            if not eps.empty:
-                with st.expander("See every past fall"):
-                    st.dataframe(pd.DataFrame({
-                        "Fall started": eps["start"].dt.strftime("%d %b %Y"),
-                        "Price then": eps["price_at_start"].map(lambda v: money(v, scur)),
-                        "Old high": eps["old_high"].map(lambda v: money(v, scur)),
-                        "Got back to old high?": eps["recovered"].map({True: "Yes", False: "No (within 2 yrs)"}),
-                        "Time taken": (eps["days_to_recover"] / 30.4).map(lambda m: "–" if pd.isna(m) else f"{m:.0f} months"),
-                        "Fell further first": eps["further_drop"].map(lambda v: f"{v:.0%}"),
-                    }), hide_index=True, use_container_width=True)
-
-        # Business health + score
-        checks = []
-        if is_etf:
-            st.info("This is an ETF: it holds a basket of stocks or assets, so company health checks don't apply. "
-                    "Use the recovery insight above and compare it with similar ETFs.")
-        else:
+            if checks and stt is not None:
+                st.write("")
+                st.markdown("#### Recovery score")
+                weights = ss.get("weights", DEFAULT_WEIGHTS)
+                res_sc = recovery_score(stt["recovery_rate"], stt["episodes"], rates.get(thr), checks, weights)
+                score = res_sc["score"]
+                colour = GREEN if (score or 0) >= 70 else AMBER if (score or 0) >= 45 else RED
+                left, right = st.columns([1, 2])
+                left.markdown(f'<div class="insight" style="text-align:center"><div class="stat-label">Recovery score</div>'
+                              f'<div style="font-size:3rem; font-weight:700; color:{colour}">{score if score is not None else "–"}</div>'
+                              f'<div class="stat-val" style="color:{colour}">{score_label(score)}</div><div class="muted">out of 100</div></div>',
+                              unsafe_allow_html=True)
+                with right:
+                    for part, val in res_sc["parts"].items():
+                        st.progress(float(val), text=f"{part}: {val:.0%}  ·  weight {weights.get(part, 'Medium')}")
+                    with st.popover("⚖️ Change what matters to you"):
+                        new_w = {p: st.select_slider(p, options=list(WEIGHT_LEVELS), value=weights.get(p, "Medium"), key=f"w_{p}")
+                                 for p in DEFAULT_WEIGHTS}
+                        if new_w != weights:
+                            ss.weights = new_w
+                            st.rerun()
+                st.caption("70+ Strong · 45–69 Mixed · below 45 Weak. The score summarises evidence; it is not a buy or sell signal.")
             st.write("")
-            st.markdown("#### Business health check")
-            ref_market = cfg["benchmark"] if market != "Global" else None
-            bench = load_ohlc(ref_market) if ref_market else pd.DataFrame()
-            market_dd = current_drawdown(bench["Close"]).get("drawdown") if not bench.empty else None
-            ind = industries.get(t)
-            peers = [p for p in scan_all.index if industries.get(p) == ind and p != t] if ind else []
-            peer_dd = float(scan_all.loc[peers, "drawdown"].median()) if len(peers) >= 3 else None
-            if not fund.get("ok"):
-                st.info("Company financials are not available on Yahoo Finance for this stock.")
+            ml_page.stock_box(list_name, t)
+
+        with tab_news:
+            st.write("")
+            st.markdown("#### Latest news")
+            nq, india_news = news_query(names.get(t, t), t)
+            headlines = load_news(nq, india_news)
+            if not headlines:
+                st.caption("No recent headlines found.")
             else:
-                checks = health_checks(fund, now["drawdown"] if now["drawdown"] <= -0.10 else None, peer_dd, market_dd)
-                icons = {"pass": "✅", "warn": "⚠️", "fail": "❌", "na": "➖"}
                 st.markdown('<div class="insight">' + "".join(
-                    f'<div style="padding:7px 0; border-bottom:1px solid #eef0f2">{icons[c["status"]]} <b>{c["check"]}</b>'
-                    f'<span class="muted"> · {c["detail"]}</span></div>' for c in checks) + "</div>", unsafe_allow_html=True)
-                st.caption("✅ good · ⚠️ watch · ❌ warning sign · ➖ not available. From Yahoo Finance; check the latest results too.")
-
-        if checks and stt is not None:
-            st.write("")
-            st.markdown("#### Recovery score")
-            weights = ss.get("weights", DEFAULT_WEIGHTS)
-            res_sc = recovery_score(stt["recovery_rate"], stt["episodes"], rates.get(thr), checks, weights)
-            score = res_sc["score"]
-            colour = GREEN if (score or 0) >= 70 else AMBER if (score or 0) >= 45 else RED
-            left, right = st.columns([1, 2])
-            left.markdown(f'<div class="insight" style="text-align:center"><div class="stat-label">Recovery score</div>'
-                          f'<div style="font-size:3rem; font-weight:700; color:{colour}">{score if score is not None else "–"}</div>'
-                          f'<div class="stat-val" style="color:{colour}">{score_label(score)}</div><div class="muted">out of 100</div></div>',
-                          unsafe_allow_html=True)
-            with right:
-                for part, val in res_sc["parts"].items():
-                    st.progress(float(val), text=f"{part}: {val:.0%}  ·  weight {weights.get(part, 'Medium')}")
-                with st.popover("⚖️ Change what matters to you"):
-                    new_w = {p: st.select_slider(p, options=list(WEIGHT_LEVELS), value=weights.get(p, "Medium"), key=f"w_{p}")
-                             for p in DEFAULT_WEIGHTS}
-                    if new_w != weights:
-                        ss.weights = new_w
-                        st.rerun()
-            st.caption("70+ Strong · 45–69 Mixed · below 45 Weak. The score summarises evidence; it is not a buy or sell signal.")
-        st.write("")
-        ml_page.stock_box(list_name, t)
-
-        st.write("")
-        st.markdown("#### Latest news")
-        nq, india_news = news_query(names.get(t, t), t)
-        headlines = load_news(nq, india_news)
-        if not headlines:
-            st.caption("No recent headlines found.")
-        else:
-            st.markdown('<div class="insight">' + "".join(
-                f'<div style="padding:7px 0; border-bottom:1px solid #eef0f2"><a href="{h["link"]}" target="_blank" '
-                f'style="color:#111827; text-decoration:none; font-weight:600">{h["title"]}</a><br>'
-                f'<span class="muted">{h["source"]} · {pd.Timestamp(h["date"]):%d %b %Y, %H:%M}</span></div>'
-                for h in headlines) + "</div>", unsafe_allow_html=True)
-            st.caption("Headlines from Google News. Click to read on the publisher's site.")
+                    f'<div style="padding:7px 0; border-bottom:1px solid #eef0f2"><a href="{h["link"]}" target="_blank" '
+                    f'style="color:#111827; text-decoration:none; font-weight:600">{h["title"]}</a><br>'
+                    f'<span class="muted">{h["source"]} · {pd.Timestamp(h["date"]):%d %b %Y, %H:%M}</span></div>'
+                    for h in headlines) + "</div>", unsafe_allow_html=True)
+                st.caption("Headlines from Google News. Click to read on the publisher's site.")
         st.caption("Prices from Yahoo Finance, adjusted for splits and dividends. Educational tool, not investment advice.")
 
 # ================================================================
@@ -835,103 +809,108 @@ elif market == "Funds":
             ss.compare = [c for c in ss.compare if c != code] if in_cmp else ss.compare + [code]
             st.rerun()
         d1 = nav_s.iloc[-1] / nav_s.iloc[-2] - 1
-        st.markdown(f'<div class="price-big">₹{m["nav"]:,.4f}</div><div class="chg {cls(d1)}">{d1:+.2%} on {m["nav_date"]:%d %b %Y} '
-                    f'<span class="muted">(NAV)</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; align-items:baseline; gap:12px; margin-top:8px">'
+                    f'<div class="price-big">₹{m["nav"]:,.4f}</div>{ui.pill(d1)}'
+                    f'<span class="muted">NAV · {m["nav_date"]:%d %b %Y}</span></div>', unsafe_allow_html=True)
+        ftab_over, ftab_falls, ftab_sip = st.tabs(["📊 Overview", "📉 Falls & recoveries", "🧮 SIP calculator"])
 
-        period = st.segmented_control("Period", ["1Y", "3Y", "5Y", "10Y", "MAX"], default="5Y", label_visibility="collapsed")
-        yrs = {"1Y": 1, "3Y": 3, "5Y": 5, "10Y": 10, "MAX": 100}[period or "5Y"]
-        part = nav_s[nav_s.index >= nav_s.index[-1] - pd.DateOffset(years=yrs)]
-        growth_fund = 10000 * part / part.iloc[0]
-        bench = load_ohlc("^NSEI")["Close"]
-        bench = bench[bench.index >= part.index[0]]
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=growth_fund.index, y=growth_fund, name="This fund", line=dict(color=GREEN, width=2)))
-        if len(bench) > 5:
-            fig.add_trace(go.Scatter(x=bench.index, y=10000 * bench / bench.iloc[0], name="Nifty 50 (price index)",
-                                     line=dict(color="#9ca3af", width=1.5, dash="dot")))
-        fig.update_layout(height=380, margin=dict(l=0, r=0, t=30, b=0), plot_bgcolor="white", hovermode="x unified",
-                          title=dict(text="Growth of ₹10,000", font=dict(size=14)), legend=dict(orientation="h", y=1.12),
-                          yaxis=dict(gridcolor="#f0f0f0", side="right", tickprefix="₹"))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-        st.caption(f"₹10,000 invested {part.index[0]:%d %b %Y} is worth ₹{growth_fund.iloc[-1]:,.0f} today. "
-                   "Nifty 50 line excludes dividends, so it slightly understates the index.")
-
-        st.markdown("#### Returns (per year)")
-        rets = [("1 year", m["1Y"]), ("3 years", m["3Y"]), ("5 years", m["5Y"]), ("10 years", m["10Y"]), ("Since start", m["since_start"])]
-        for c, (lab, v) in zip(st.columns(5), rets):
-            c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val {cls(v) if v is not None else ""}">{pct(v, True, 1)}</div>',
-                       unsafe_allow_html=True)
-        st.write("")
-        st.markdown("#### Risk and consistency")
-        risk = [("Ups & downs (volatility)", pct(m["volatility"], digits=1)), ("Worst fall ever", pct(m["max_drawdown"])),
-                ("Below its high now", pct(m["current_drawdown"])), ("Worst 3-year return", pct(m["rolling3_min"], True, 1)),
-                ("3Y periods beating 10%", pct(m["rolling3_pct_above_10"]))]
-        for c, (lab, v) in zip(st.columns(5), risk):
-            c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val">{v}</div>', unsafe_allow_html=True)
-
-        st.write("")
-        st.markdown("#### Falls and recoveries")
-        cr = crash_recoveries(nav_s, 0.10)
-        if cr.empty:
-            st.markdown('<div class="insight">This fund has <b>never fallen 10% or more</b> from a high.</div>', unsafe_allow_html=True)
-        else:
-            done = cr.dropna(subset=["months_peak_to_recovery"])
-            worst = cr.loc[cr["fall"].idxmin()]
-            worst_txt = (f"Its worst fall was <b>{abs(worst['fall']):.0%}</b> ({worst['peak']:%b %Y} to {worst['trough']:%b %Y})"
-                         + (f", and it was back at its high <b>{worst['months_peak_to_recovery']:.0f} months</b> after the peak."
-                            if not pd.isna(worst["months_peak_to_recovery"]) else ", and it has not yet fully recovered."))
-            typ = (f" Across its {len(cr)} falls of 10% or more, it typically got back to its high in "
-                   f"<b>{done['months_peak_to_recovery'].median():.0f} months</b> from the peak.") if len(done) else ""
-            now_txt = (f"<br><br>Right now it is <b>{abs(m['current_drawdown']):.0%} below</b> its high."
-                       if m["current_drawdown"] <= -0.02 else "<br><br>Right now it is at or near its high.")
-            st.markdown(f'<div class="insight">{worst_txt}{typ}{now_txt}<br><br>'
-                        '<span class="muted">Past recoveries are evidence, not a promise.</span></div>', unsafe_allow_html=True)
-            with st.expander("See every fall of 10% or more"):
-                st.dataframe(pd.DataFrame({
-                    "High on": cr["peak"].dt.strftime("%d %b %Y"), "Low on": cr["trough"].dt.strftime("%d %b %Y"),
-                    "Fall": cr["fall"].map(lambda v: f"{v:.0%}"),
-                    "Back at high on": cr["recovered"].map(lambda d: "Not yet" if pd.isna(d) else f"{d:%d %b %Y}"),
-                    "Months from high to recovery": cr["months_peak_to_recovery"].map(lambda v: "–" if pd.isna(v) else f"{v:.0f}"),
-                }), hide_index=True, use_container_width=True)
-
-        st.write("")
-        st.markdown("#### SIP calculator")
-        st.caption("What a monthly SIP would be worth today, using this fund's real past NAVs "
-                   "(bought on the first NAV date of each month).")
-        k1, k2 = st.columns(2)
-        amount = k1.number_input("Monthly SIP (₹)", min_value=100, max_value=1_000_000, value=5000, step=500)
-        max_years = max(1, int((nav_s.index[-1] - nav_s.index[0]).days // 365))
-        span_opts = [y for y in (1, 3, 5, 10, 15) if y <= max_years] + ["Since start"]
-
-        def span_label(v):
-            return v if isinstance(v, str) else f"{v} year{'s' if v > 1 else ''} ago"
-
-        span = k2.segmented_control("Started", span_opts, default=5 if 5 in span_opts else span_opts[0],
-                                    format_func=span_label)
-        start = nav_s.index[0] if span in (None, "Since start") else nav_s.index[-1] - pd.DateOffset(years=int(span))
-        sip = sip_simulation(nav_s, amount, start)
-        if sip:
-            gain = sip["value"] - sip["invested"]
-            xr = sip["xirr"]
-            cards = [("You put in", f"₹{sip['invested']:,.0f}", ""),
-                     ("Worth today", f"₹{sip['value']:,.0f}", cls(gain)),
-                     ("Gain", f"{'+' if gain >= 0 else '-'}₹{abs(gain):,.0f}", cls(gain)),
-                     ("Yearly return (XIRR)", pct(xr, True, 1) if xr is not None else "–", cls(xr or 0))]
-            for c, (lab, val, k) in zip(st.columns(4), cards):
-                c.markdown(f'<div class="idx-card"><div class="idx-name">{lab}</div><div class="idx-val {k}">{val}</div></div>',
-                           unsafe_allow_html=True)
-            h = sip["history"]
+        with ftab_over:
+            period = st.segmented_control("Period", ["1Y", "3Y", "5Y", "10Y", "MAX"], default="5Y", label_visibility="collapsed")
+            yrs = {"1Y": 1, "3Y": 3, "5Y": 5, "10Y": 10, "MAX": 100}[period or "5Y"]
+            part = nav_s[nav_s.index >= nav_s.index[-1] - pd.DateOffset(years=yrs)]
+            growth_fund = 10000 * part / part.iloc[0]
+            bench = load_ohlc("^NSEI")["Close"]
+            bench = bench[bench.index >= part.index[0]]
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=h.index, y=h["Invested"], name="Money put in", line=dict(color="#9ca3af", width=1.5)))
-            fig.add_trace(go.Scatter(x=h.index, y=h["Value"], name="Value of your SIP", line=dict(color=GREEN, width=2),
-                                     fill="tonexty", fillcolor="rgba(26,127,90,0.08)"))
-            fig.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="white", hovermode="x unified",
-                              legend=dict(orientation="h", y=1.1),
+            fig.add_trace(go.Scatter(x=growth_fund.index, y=growth_fund, name="This fund", line=dict(color=GREEN, width=2)))
+            if len(bench) > 5:
+                fig.add_trace(go.Scatter(x=bench.index, y=10000 * bench / bench.iloc[0], name="Nifty 50 (price index)",
+                                         line=dict(color="#9ca3af", width=1.5, dash="dot")))
+            fig.update_layout(height=380, margin=dict(l=0, r=0, t=30, b=0), plot_bgcolor="white", hovermode="x unified",
+                              title=dict(text="Growth of ₹10,000", font=dict(size=14)), legend=dict(orientation="h", y=1.12),
                               yaxis=dict(gridcolor="#f0f0f0", side="right", tickprefix="₹"))
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-            st.caption(f"{sip['installments']} monthly instalments from {start:%b %Y}. Putting the same "
-                       f"₹{sip['invested']:,.0f} in all at once on day one would be worth ₹{sip['lump_value']:,.0f} today. "
-                       "XIRR is the yearly return that accounts for each instalment being invested for a different time.")
+            st.caption(f"₹10,000 invested {part.index[0]:%d %b %Y} is worth ₹{growth_fund.iloc[-1]:,.0f} today. "
+                       "Nifty 50 line excludes dividends, so it slightly understates the index.")
+
+            st.markdown("#### Returns (per year)")
+            rets = [("1 year", m["1Y"]), ("3 years", m["3Y"]), ("5 years", m["5Y"]), ("10 years", m["10Y"]), ("Since start", m["since_start"])]
+            for c, (lab, v) in zip(st.columns(5), rets):
+                c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val {cls(v) if v is not None else ""}">{pct(v, True, 1)}</div>',
+                           unsafe_allow_html=True)
+            st.write("")
+            st.markdown("#### Risk and consistency")
+            risk = [("Ups & downs (volatility)", pct(m["volatility"], digits=1)), ("Worst fall ever", pct(m["max_drawdown"])),
+                    ("Below its high now", pct(m["current_drawdown"])), ("Worst 3-year return", pct(m["rolling3_min"], True, 1)),
+                    ("3Y periods beating 10%", pct(m["rolling3_pct_above_10"]))]
+            for c, (lab, v) in zip(st.columns(5), risk):
+                c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val">{v}</div>', unsafe_allow_html=True)
+
+        with ftab_falls:
+            st.write("")
+            st.markdown("#### Falls and recoveries")
+            cr = crash_recoveries(nav_s, 0.10)
+            if cr.empty:
+                st.markdown('<div class="insight">This fund has <b>never fallen 10% or more</b> from a high.</div>', unsafe_allow_html=True)
+            else:
+                done = cr.dropna(subset=["months_peak_to_recovery"])
+                worst = cr.loc[cr["fall"].idxmin()]
+                worst_txt = (f"Its worst fall was <b>{abs(worst['fall']):.0%}</b> ({worst['peak']:%b %Y} to {worst['trough']:%b %Y})"
+                             + (f", and it was back at its high <b>{worst['months_peak_to_recovery']:.0f} months</b> after the peak."
+                                if not pd.isna(worst["months_peak_to_recovery"]) else ", and it has not yet fully recovered."))
+                typ = (f" Across its {len(cr)} falls of 10% or more, it typically got back to its high in "
+                       f"<b>{done['months_peak_to_recovery'].median():.0f} months</b> from the peak.") if len(done) else ""
+                now_txt = (f"<br><br>Right now it is <b>{abs(m['current_drawdown']):.0%} below</b> its high."
+                           if m["current_drawdown"] <= -0.02 else "<br><br>Right now it is at or near its high.")
+                st.markdown(f'<div class="insight">{worst_txt}{typ}{now_txt}<br><br>'
+                            '<span class="muted">Past recoveries are evidence, not a promise.</span></div>', unsafe_allow_html=True)
+                with st.expander("See every fall of 10% or more"):
+                    st.dataframe(pd.DataFrame({
+                        "High on": cr["peak"].dt.strftime("%d %b %Y"), "Low on": cr["trough"].dt.strftime("%d %b %Y"),
+                        "Fall": cr["fall"].map(lambda v: f"{v:.0%}"),
+                        "Back at high on": cr["recovered"].map(lambda d: "Not yet" if pd.isna(d) else f"{d:%d %b %Y}"),
+                        "Months from high to recovery": cr["months_peak_to_recovery"].map(lambda v: "–" if pd.isna(v) else f"{v:.0f}"),
+                    }), hide_index=True, use_container_width=True)
+
+        with ftab_sip:
+            st.write("")
+            st.markdown("#### SIP calculator")
+            st.caption("What a monthly SIP would be worth today, using this fund's real past NAVs "
+                       "(bought on the first NAV date of each month).")
+            k1, k2 = st.columns(2)
+            amount = k1.number_input("Monthly SIP (₹)", min_value=100, max_value=1_000_000, value=5000, step=500)
+            max_years = max(1, int((nav_s.index[-1] - nav_s.index[0]).days // 365))
+            span_opts = [y for y in (1, 3, 5, 10, 15) if y <= max_years] + ["Since start"]
+
+            def span_label(v):
+                return v if isinstance(v, str) else f"{v} year{'s' if v > 1 else ''} ago"
+
+            span = k2.segmented_control("Started", span_opts, default=5 if 5 in span_opts else span_opts[0],
+                                        format_func=span_label)
+            start = nav_s.index[0] if span in (None, "Since start") else nav_s.index[-1] - pd.DateOffset(years=int(span))
+            sip = sip_simulation(nav_s, amount, start)
+            if sip:
+                gain = sip["value"] - sip["invested"]
+                xr = sip["xirr"]
+                cards = [("You put in", f"₹{sip['invested']:,.0f}", ""),
+                         ("Worth today", f"₹{sip['value']:,.0f}", cls(gain)),
+                         ("Gain", f"{'+' if gain >= 0 else '-'}₹{abs(gain):,.0f}", cls(gain)),
+                         ("Yearly return (XIRR)", pct(xr, True, 1) if xr is not None else "–", cls(xr or 0))]
+                for c, (lab, val, k) in zip(st.columns(4), cards):
+                    c.markdown(f'<div class="idx-card"><div class="idx-name">{lab}</div><div class="idx-val {k}">{val}</div></div>',
+                               unsafe_allow_html=True)
+                h = sip["history"]
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=h.index, y=h["Invested"], name="Money put in", line=dict(color="#9ca3af", width=1.5)))
+                fig.add_trace(go.Scatter(x=h.index, y=h["Value"], name="Value of your SIP", line=dict(color=GREEN, width=2),
+                                         fill="tonexty", fillcolor="rgba(26,127,90,0.08)"))
+                fig.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="white", hovermode="x unified",
+                                  legend=dict(orientation="h", y=1.1),
+                                  yaxis=dict(gridcolor="#f0f0f0", side="right", tickprefix="₹"))
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                st.caption(f"{sip['installments']} monthly instalments from {start:%b %Y}. Putting the same "
+                           f"₹{sip['invested']:,.0f} in all at once on day one would be worth ₹{sip['lump_value']:,.0f} today. "
+                           "XIRR is the yearly return that accounts for each instalment being invested for a different time.")
         st.caption("NAV data from AMFI and mfapi.in. Past returns do not guarantee future returns. Not investment advice.")
 
     # ---------- Compare ----------

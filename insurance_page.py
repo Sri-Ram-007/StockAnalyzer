@@ -5,6 +5,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import ui
+
 from core.insurance import (FEATURES, HEALTH_DEFAULT, HEALTH_PARTS, LEVELS, LIFE_DEFAULT, LIFE_PARTS, health_cover_guide,
                             life_cover_needed, load, policy_feature_score, score)
 
@@ -233,7 +235,7 @@ def compare_page(ss, life, health, meta):
         cols = st.columns(3)
         rows = []
         for i, c in enumerate(cols):
-            with c.container(border=True):
+            with ui.card(c):
                 name = st.text_input("Policy name", value=f"Policy {i + 1}", key=f"hp_name{i}")
                 ins = st.selectbox("Insurer", insurers_h, index=None, key=f"hp_ins{i}", placeholder="Choose insurer")
                 cover = st.number_input("Cover (₹)", 0, 100_000_000, 1_000_000, 100_000, key=f"hp_cov{i}")
@@ -263,7 +265,7 @@ def compare_page(ss, life, health, meta):
         cols = st.columns(3)
         out = []
         for i, c in enumerate(cols):
-            with c.container(border=True):
+            with ui.card(c):
                 ins = st.selectbox("Insurer", lnames, index=None, key=f"tp_ins{i}", placeholder="Choose insurer")
                 cover = st.number_input("Cover (₹)", 0, 1_000_000_000, 10_000_000, 500_000, key=f"tp_cov{i}")
                 prem = st.number_input("Yearly premium (₹)", 0, 10_000_000, 12_000, 500, key=f"tp_prem{i}")

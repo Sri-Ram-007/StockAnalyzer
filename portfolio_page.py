@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import ui
+
 from core.alerts import build_message, load_config, load_rules, save_config, save_rules, send
 from core.markets import INDIAN_ETFS, currency_code
 from core.portfolio import add_holding, load_holdings, remove_holding, summary, value_portfolio
@@ -178,7 +180,7 @@ def alerts_page(ss):
              "a holding or watchlist item crossing a fall level, a big one-day move, a price target being hit, "
              "or a holding's loss crossing your limit.")
     rules = load_rules()
-    with st.container(border=True):
+    with ui.card(st):
         st.markdown("**1. What should I alert you about?**")
         c1, c2, c3 = st.columns(3)
         falls = c1.multiselect("Fall below the 1-year high", [10, 15, 20, 25, 30, 40, 50], default=rules["fall_from_high"],
@@ -202,7 +204,7 @@ def alerts_page(ss):
                         "daily_summary": daily, "include_ipos": ipos, "targets": targets})
             st.success("Saved.")
 
-    with st.container(border=True):
+    with ui.card(st):
         st.markdown("**2. Where should I send them?**")
         cfg = load_config()
         with st.expander("How to set up Telegram (recommended, about 2 minutes)"):
@@ -230,7 +232,7 @@ def alerts_page(ss):
                          "EMAIL_APP_PASSWORD": pw.replace(" ", ""), "EMAIL_TO": to.strip()})
             st.success("Saved on this computer only (data/alerts_config.json).")
 
-    with st.container(border=True):
+    with ui.card(st):
         st.markdown("**3. Preview and test**")
         p1, p2 = st.columns(2)
         if p1.button("👀 Preview today's message"):
@@ -243,7 +245,7 @@ def alerts_page(ss):
         if ss.get("preview"):
             st.markdown(f'<div class="insight">{ss.preview.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
 
-    with st.container(border=True):
+    with ui.card(st):
         st.markdown("**4. Make it automatic**")
         st.markdown("""
 **Already set up: GitHub (free, works even when your laptop is off, no passwords).**
