@@ -40,7 +40,7 @@ TOP = {"India": "India", "US": "US", "Funds": "Mutual Funds", "Global": "🌍 Gl
 st.markdown(f"""
 <style>
   #MainMenu, footer, [data-testid="stDecoration"] {{ display: none; }}
-  .block-container {{ padding-top: 1.1rem; max-width: 1250px; }}
+  .block-container {{ padding-top: 3.6rem; max-width: 1250px; }}  /* room for Streamlit Cloud's top bar */
   .brand {{ font-size: 1.45rem; font-weight: 700; color: #111827; padding-top: 2px; }}
   .idx-card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 14px; background: #fff; }}
   .idx-name {{ font-size: .78rem; color: {MUTED}; font-weight: 600; letter-spacing: .02em; }}
@@ -59,7 +59,7 @@ st.markdown(f"""
   div[data-testid="stButton"] button[kind="tertiary"]:hover {{ background: #f3f4f6; }}
   [data-testid="stButtonGroup"] > div {{ flex-wrap: wrap; }}
   @media (max-width: 640px) {{
-    .block-container {{ padding-left: .7rem; padding-right: .7rem; padding-top: .6rem; }}
+    .block-container {{ padding-left: .7rem; padding-right: .7rem; padding-top: 3.2rem; }}
     .brand {{ font-size: 1.2rem; }}
     .st-key-idxstrip [data-testid="stHorizontalBlock"] {{ flex-wrap: nowrap !important; gap: .35rem; }}
     .st-key-idxstrip [data-testid="stColumn"] {{ min-width: 0 !important; width: auto !important; flex: 1 1 0 !important; }}

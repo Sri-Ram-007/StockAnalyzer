@@ -106,3 +106,10 @@ Private files that never leave your computer (see `.gitignore`): `data/alerts_co
 - **Insurance data updates itself**: `.github/workflows/update_insurance.yml` checks IRDAI on the 3rd of every month,
   rebuilds the insurer scores when a new handbook is published, and saves them. If the new tables cannot be processed,
   the old data is kept and the daily report mentions it. Run `python update_insurance.py` to check by hand.
+
+## Tax and goals (Portfolio section)
+- **Tax**: estimated capital-gains tax if you sold today (Budget July 2024 rules by default, all rates editable): equity
+  short/long-term, debt at slab, gold and foreign shares, loss set-off, the ₹1.25 lakh equity exemption, plus tips
+  (holdings turning long-term soon, unused exemption, tax-loss harvesting). Estimate only.
+- **Goals**: monthly SIP needed for a goal or for retirement, using the real 10-year returns of the fund category you
+  choose (weaker / typical / better funds), with inflation and yearly step-up.
