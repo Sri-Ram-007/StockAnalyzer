@@ -237,12 +237,13 @@ def alerts_page(ss):
     with st.container(border=True):
         st.markdown("**4. Make it automatic**")
         st.markdown("""
-**Option A, works even when your laptop is off (GitHub, free).** The project already contains
-`.github/workflows/daily_alerts.yml`, which runs every weekday at about 5 pm India time.
-1. Create a free **private** repository on GitHub and upload this project folder. The `.gitignore` keeps passwords and downloaded data out.
-2. In the repository: **Settings → Secrets and variables → Actions → New repository secret**. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (and/or the email ones).
-3. Open the **Actions** tab, choose *Daily stock alerts*, and click **Run workflow** once to test.
-4. When you change your holdings, watchlist or rules, upload the updated files in `data/` again.
+**Already set up: GitHub (free, works even when your laptop is off, no passwords).**
+The project is on GitHub, and every weekday at about 5 pm India time it posts the report as an *issue* in your private
+repository. GitHub notifies you by email and in the GitHub app automatically.
+- To test it now: GitHub → your repository → **Actions** → *Daily stock alerts* → **Run workflow**.
+- After changing holdings, watchlist or rules here, double-click **`Sync to GitHub.bat`** so the report uses your latest data.
+
+Telegram and email (sections 2 and 3 above) are optional extras; you don't need them.
 
 **Option B, only while your laptop is on (Windows Task Scheduler).** Double-click `Send Alerts Now.bat` to test, then
 open *Task Scheduler → Create Basic Task → Daily, 5:00 PM → Start a program* and choose that `.bat` file.

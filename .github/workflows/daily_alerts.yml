@@ -1,11 +1,16 @@
 # Runs every weekday at about 5:00 pm India time (11:30 UTC), even when your laptop is off.
-# Needs repository secrets: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (and/or EMAIL_ADDRESS, EMAIL_APP_PASSWORD, EMAIL_TO).
+# The report is posted as an issue in this repository, so GitHub notifies/emails you.
+# No passwords or secrets are needed.
 name: Daily stock alerts
 
 on:
   schedule:
     - cron: "30 11 * * 1-5"
   workflow_dispatch: {}   # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   alerts:
@@ -20,8 +25,4 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python run_alerts.py
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
-          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
