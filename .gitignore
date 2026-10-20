@@ -13,3 +13,8 @@ data/*
 # Never upload passwords or bot tokens
 data/alerts_config.json
 app_phase2_backup.py
+# Insurance comparison data built from IRDAI's handbook (small CSVs) - keep; raw downloads - skip
+!data/insurance/
+data/insurance/source/
+# Stock lists (small) - bundled so the cloud version works even if NSE/BSE block cloud servers
+!data/universe_*.csv

@@ -7,3 +7,4 @@ pyarrow
 scikit-learn
 joblib
 qrcode
+openpyxl

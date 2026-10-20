@@ -14,6 +14,7 @@ from core.fundamentals import (DEFAULT_WEIGHTS, FUND_DIR, WEIGHT_LEVELS, fetch_m
                                health_checks, recovery_score, score_label)
 from core.funds import category_table, crash_recoveries, fund_metrics, get_fund_list, get_nav
 from core.markets import ETF_TICKERS, currency_of, global_search
+import insurance_page
 import ipo_page
 from core.funds import sip_simulation
 from core.news import get_news, news_query
@@ -34,7 +35,7 @@ MARKETS = {
     "US": {"label": "🇺🇸 US", "lists": ["S&P 500", "US ETFs"], "default": "S&P 500", "cur": "$", "benchmark": "^GSPC",
            "indices": [("S&P 500", "^GSPC"), ("NASDAQ", "^IXIC"), ("DOW JONES", "^DJI")]},
 }
-TOP = {"India": "India", "US": "US", "Funds": "Mutual Funds", "Global": "🌍 Global", "IPO": "🆕 IPOs", "Portfolio": "💼 Portfolio"}
+TOP = {"India": "India", "US": "US", "Funds": "Mutual Funds", "Global": "🌍 Global", "IPO": "🆕 IPOs", "Portfolio": "💼 Portfolio", "Insurance": "🛡️ Insurance"}
 
 st.markdown(f"""
 <style>
@@ -233,7 +234,7 @@ mk = h2.segmented_control("Market", list(TOP), default=ss.market, format_func=la
                           key=f"mk_{ss.market}", label_visibility="collapsed")
 if mk and mk != ss.market:
     ss.market = mk
-    ss.page = {"Funds": "Explore", "Global": "Search", "Portfolio": "Holdings", "IPO": "Open & upcoming"}.get(mk, "Explore")
+    ss.page = {"Funds": "Explore", "Global": "Search", "Portfolio": "Holdings", "IPO": "Open & upcoming", "Insurance": "Health insurers"}.get(mk, "Explore")
     st.rerun()
 
 market = ss.market
@@ -949,6 +950,12 @@ elif market == "Funds":
                 "Volatility": pc, "Worst fall": pc, "Worst 3Y return": pc,
                 "3Y periods beating 10%": st.column_config.ProgressColumn(format="percent", min_value=0, max_value=1)})
         st.caption("Returns are yearly (CAGR). Past returns do not guarantee future returns. Not investment advice.")
+
+# ================================================================
+#                     INSURANCE (kept separate from investing)
+# ================================================================
+elif market == "Insurance":
+    insurance_page.render(ss)
 
 # ================================================================
 #                              IPOs

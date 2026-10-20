@@ -87,3 +87,13 @@ Private files that never leave your computer (see `.gitignore`): `data/alerts_co
   (or type the shown address, e.g. http://192.168.x.x:8501, in the phone's browser). Allow Python on "Private networks"
   if Windows asks. Use this on your home Wi-Fi only.
 - The layout adapts to phone screens (wrapping menus, compact market strip).
+
+## Insurance (separate section)
+- **🛡️ Insurance → Health insurers / Life insurers**: insurer scorecards built from IRDAI's official
+  *Handbook on Indian Insurance Statistics 2024-25* (claims paid, rejected, speed, health claims ratio, complaints,
+  solvency). Adjustable weights, top-3 summary, plain-English explanations. Insurers with too little data are not ranked.
+- **How much cover?**: needs-based life cover (term insurance) and a rule-of-thumb health cover guide.
+- **Compare policies**: checklist for up to 3 health policies (room rent, co-pay, waiting periods, restoration,
+  no-claim bonus, sub-limits) and term-plan quote comparison, combined with the insurer's track record.
+- Update yearly: download the new handbook zip from https://irdai.gov.in/handbook-of-indian-insurance, extract it, then
+  `python -m core.insurance_data "<extracted folder>" 2025-26`.
