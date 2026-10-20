@@ -537,7 +537,7 @@ if market in ("India", "US", "Global"):
         st.markdown(f'<div style="display:flex; align-items:baseline; gap:12px; margin-top:8px">'
                     f'<div class="price-big">{money(price, scur)}</div>{ui.pill(chg)}'
                     f'<span class="muted">{price - prev:+,.2f} · {s.index[-1]:%d %b %Y}</span></div>', unsafe_allow_html=True)
-        tab_over, tab_rec, tab_health, tab_news = st.tabs(["📊 Overview", "📉 Recovery", "🩺 Health & score", "📰 News"])
+        tab_over, tab_rec, tab_health, tab_ml, tab_news = st.tabs(["📊 Overview", "📉 Recovery", "🩺 Health & score", "🤖 ML", "📰 News"])
 
         with tab_over:
             period = st.segmented_control("Period", ["1M", "6M", "1Y", "3Y", "5Y", "MAX"], default="1Y", label_visibility="collapsed")
@@ -687,7 +687,11 @@ if market in ("India", "US", "Global"):
                             st.rerun()
                 st.caption("70+ Strong · 45–69 Mixed · below 45 Weak. The score summarises evidence; it is not a buy or sell signal.")
             st.write("")
-            ml_page.stock_box(list_name, t)
+
+        with tab_ml:
+            india = t.endswith((".NS", ".BO"))
+            ml_page.single_stock(t, names.get(t, ss.extra_names.get(t, t)), ohlc["Close"],
+                                 load_ohlc("^NSEI" if india else "^GSPC")["Close"], "Nifty 50" if india else "S&P 500")
 
         with tab_news:
             st.write("")

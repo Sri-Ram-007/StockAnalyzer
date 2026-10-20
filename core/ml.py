@@ -208,3 +208,66 @@ def verdict(rep: dict) -> str:
         level = "a modest edge"
     return (f"On {len(rep['test_years'])} years it never saw, the model was right {acc:.0%} of the time, versus "
             f"{base:.0%} for simply always guessing the most common outcome: {level}.")
+
+
+def _single_model():
+    """Smaller trees: one stock has far fewer rows than a whole list."""
+    return HistGradientBoostingClassifier(max_iter=150, learning_rate=0.05, max_leaf_nodes=8,
+                                          min_samples_leaf=40, l2_regularization=1.0, random_state=42)
+
+
+def single_stock_test(close: pd.Series, index: pd.Series, target: str = "up", every: int = 3) -> dict | None:
+    """Train and walk-forward test a model on ONE stock's own history.
+
+    Same honesty rules as the list model: past prices only, train on earlier years, test on the next
+    unseen year with an embargo gap, and compare with always guessing the most common outcome.
+    """
+    closes = close.dropna().to_frame("S")
+    if len(closes) < 252 * 5:
+        return None
+    feats = build_features(closes, index)
+    labels = build_labels(closes, index)
+    data = feats.join(labels).dropna(subset=["ret_12m", "dd_1y"])
+    data = data.iloc[::every]
+    labelled = data.dropna(subset=["fwd_ret"]).copy()
+    ycol = "fwd_ret" if target == "up" else "fwd_excess"
+    labelled = labelled.dropna(subset=[ycol])
+    labelled["y"] = (labelled[ycol] > 0).astype(int)
+    X_cols = list(FEATURE_INFO)
+    ld = labelled.index.get_level_values("date")
+    years = sorted(ld.year.unique())
+    preds, per_year = [], []
+    for yr in [y for y in years if y >= years[0] + 4]:
+        test_mask = ld.year == yr
+        train_mask = ld < pd.Timestamp(f"{yr}-01-01") - pd.Timedelta(days=int(HORIZON * 1.5))
+        ytr = labelled.loc[train_mask, "y"]
+        if train_mask.sum() < 250 or test_mask.sum() < 30 or ytr.nunique() < 2:
+            continue
+        m = _single_model().fit(labelled.loc[train_mask, X_cols], ytr)
+        te = labelled.loc[test_mask]
+        p = m.predict_proba(te[X_cols])[:, 1]
+        guess = int(ytr.mean() >= 0.5)
+        part = pd.DataFrame({"year": yr, "y": te["y"].to_numpy(), "p": p, "fwd": te[ycol].to_numpy(), "guess": guess})
+        preds.append(part)
+        per_year.append({"year": int(yr), "accuracy": float(((p >= 0.5) == part["y"]).mean()),
+                         "baseline_accuracy": float((part["y"] == guess).mean())})
+    if not preds:
+        return None
+    allp = pd.concat(preds)
+    said_up, said_down = allp[allp["p"] >= 0.5], allp[allp["p"] < 0.5]
+    final = _single_model().fit(labelled[X_cols], labelled["y"])
+    latest = data[X_cols].iloc[[-1]]
+    return {
+        "target": target, "target_label": TARGETS[target], "test_years": [int(y) for y in allp["year"].unique()],
+        "test_rows": int(len(allp)), "accuracy": float(((allp["p"] >= 0.5) == allp["y"]).mean()),
+        "periods": int(len(allp) * every / HORIZON),  # roughly independent 3-month periods in the test
+        "baseline_accuracy": float((allp["y"] == allp["guess"]).mean()),
+        "always_up_accuracy": float(allp["y"].mean()),
+        "auc": float(roc_auc_score(allp["y"], allp["p"])) if allp["y"].nunique() > 1 else 0.5,
+        "share_positive": float(allp["y"].mean()),
+        "avg_when_up": float(said_up["fwd"].mean()) if len(said_up) else None, "n_up": int(len(said_up)),
+        "avg_when_down": float(said_down["fwd"].mean()) if len(said_down) else None, "n_down": int(len(said_down)),
+        "avg_all": float(allp["fwd"].mean()), "per_year": per_year,
+        "latest_date": str(data.index.get_level_values("date")[-1].date()),
+        "probability": float(final.predict_proba(latest)[:, 1][0]),
+    }

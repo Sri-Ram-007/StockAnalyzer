@@ -123,3 +123,65 @@ def stock_box(list_name, ticker):
             else "In honest back-testing this model did <b>not</b> beat simple guessing, so treat this number as noise.")
     st.markdown(f'<div class="insight"><b>🤖 ML outlook:</b> {p:.0%} estimated chance of being higher in about 3 months.'
                 f'<br><span class="muted">{note} See the ML outlook page for the full test.</span></div>', unsafe_allow_html=True)
+
+
+@st.cache_data(ttl=12 * 3600, show_spinner=False)
+def _single(ticker, _close, _index, target, last_date):
+    from core.ml import single_stock_test
+    return single_stock_test(_close, _index, target)
+
+
+def single_stock(ticker, name, close, index, index_name):
+    """ML tab on the stock page: a model trained and tested only on this stock's own history."""
+    st.write("")
+    st.markdown(f"#### 🤖 Can a model predict {name}?")
+    st.caption("A model trained only on this stock's own past prices (15 signals: momentum, trend, volatility, fall from high, "
+               "RSI and the market). It is tested on years it never saw, then asked about today.")
+    target = st.segmented_control("Question", list(TARGETS), default="up", key=f"mlq_{ticker}",
+                                  format_func=lambda k: TARGETS[k].replace("the market index", index_name)) or "up"
+    with st.spinner("Training and testing on this stock's history…"):
+        r = _single(ticker, close, index, target, str(close.index[-1].date()))
+    if r is None:
+        st.info("Not enough price history for this stock (needs about 5 years or more).")
+        return
+    best_guess = max(r["baseline_accuracy"], r["always_up_accuracy"], 1 - r["always_up_accuracy"])
+    beats = r["accuracy"] - best_guess >= 0.05 and r["auc"] >= 0.6
+    enough = r["periods"] >= 30
+    if beats and enough:
+        colour, head = GREEN, "The model did better than guessing on this stock"
+    elif beats:
+        colour, head = "#d97706", "Better than guessing, but on too few periods to trust"
+    else:
+        colour, head = RED, "The model did NOT beat simple guessing on this stock"
+    q = TARGETS[target].replace("the market index", index_name).lower()
+    st.markdown(f"""<div class="insight" style="border-left: 5px solid {colour}">
+        <div style="font-size:1.1rem; font-weight:700; color:{colour}">{head}</div>
+        <div style="margin-top:6px">On {len(r['test_years'])} years it never saw ({r['test_years'][0]}–{r['test_years'][-1]}),
+        it was right <b>{r['accuracy']:.0%}</b> of the time. Simple guesses scored up to <b>{best_guess:.0%}</b>
+        ("{q}" happened {r['always_up_accuracy']:.0%} of the time).</div>
+        <div class="muted" style="margin-top:6px">That test covers only about {r['periods']} separate 3-month periods, so a few lucky
+        calls can swing it a lot. One stock gives far less evidence than the whole-list test on the ML outlook page.</div>
+        </div>""", unsafe_allow_html=True)
+    st.write("")
+    fmt = lambda v: "–" if v is None else f"{v:+.1%}"
+    cards = [("Model accuracy", f"{r['accuracy']:.0%}"), ("Best simple guess", f"{best_guess:.0%}"),
+             ("AUC (0.5 = coin flip)", f"{r['auc']:.2f}"),
+             (f"Avg return when it said Yes ({r['n_up']})", fmt(r["avg_when_up"])),
+             (f"Avg return when it said No ({r['n_down']})", fmt(r["avg_when_down"]))]
+    for c, (lab, val) in zip(st.columns(5), cards):
+        c.markdown(f'<div class="stat-label">{lab}</div><div class="stat-val">{val}</div>', unsafe_allow_html=True)
+    py = pd.DataFrame(r["per_year"])
+    fig = go.Figure()
+    fig.add_bar(x=py["year"], y=py["accuracy"] * 100, name="Model", marker_color="#1f3a5f")
+    fig.add_bar(x=py["year"], y=py["baseline_accuracy"] * 100, name="Guess the usual outcome", marker_color=GREY)
+    fig.update_layout(height=260, barmode="group", margin=dict(l=0, r=0, t=30, b=0), plot_bgcolor="white",
+                      title=dict(text="Accuracy on each unseen year (%)", font=dict(size=14)),
+                      legend=dict(orientation="h", y=-0.25), yaxis=dict(gridcolor="#f0f0f0", range=[0, 100]))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    p = r["probability"]
+    st.markdown(f'<div class="insight"><b>Today ({r["latest_date"]}):</b> the model gives a <b>{p:.0%}</b> chance that '
+                f'{name} is {q.replace("higher", "higher").replace("beats", "beating")}.'
+                f'<br><span class="muted">{"Its test record above is decent, but" if beats and enough else "Given its test record,"} '
+                f'treat this as a rough signal, not a forecast.</span></div>', unsafe_allow_html=True)
+    st.caption("Past prices only; news, results and fundamentals are not used. Not investment advice.")
