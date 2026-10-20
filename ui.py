@@ -55,8 +55,8 @@ button[data-variant="segmented_control"][aria-checked="true"] { background: #fff
 
 /* ---------- list rows ---------- */
 .row { display: flex; align-items: center; gap: 12px; padding: 6px 2px; }
-.avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: .8rem; color: #fff; flex: none; }
+.avatar { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: .78rem; flex: none; border: 1px solid #eef1f5; }
 .row-name { font-weight: 600; color: #0f172a; font-size: .92rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 100%; }
 .row-sub { font-size: .75rem; color: #6b7280; }
@@ -100,6 +100,7 @@ h3 { letter-spacing: -.01em; }
   .st-key-idxstrip .idx-name { font-size: .58rem; } .st-key-idxstrip .idx-val { font-size: .8rem; }
   .st-key-idxstrip .pill { font-size: .62rem; padding: 1px 5px; } .st-key-idxstrip svg { display: none; }
   .price-big { font-size: 1.8rem; }
+  [class*="st-key-card_"] .avatar { display: none; }
   [class*="st-key-card_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
   [class*="st-key-card_"] [data-testid="stColumn"] { min-width: 0 !important; }
 }
@@ -150,7 +151,7 @@ def avatar(name):
     words = [w for w in str(name).replace("&", " ").split() if w[0].isalnum()]
     initials = "".join(w[0] for w in words[:2]).upper() or "?"
     color = _AVATAR_COLORS[int(hashlib.md5(str(name).encode()).hexdigest(), 16) % len(_AVATAR_COLORS)]
-    return f'<div class="avatar" style="background:{color}">{initials}</div>'
+    return f'<div class="avatar" style="background:{color}14; color:{color}">{initials}</div>'
 
 
 def list_row(name, sub, price_text, right_html, key, on_click, args):
