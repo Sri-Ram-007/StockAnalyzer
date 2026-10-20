@@ -14,6 +14,19 @@ def has_edge(rep) -> bool:
 
 def render(list_name, closes, index_series, index_name, names, open_stock):
     st.subheader("🤖 ML outlook: can a model predict the next 3 months?")
+    view = st.segmented_control("Test the model on", ["One stock", f"All of {list_name}"], default="One stock",
+                                key="ml_view") or "One stock"
+    if view == "One stock":
+        opts = [t for t in closes.columns if closes[t].notna().sum() > 252 * 5]
+        if not opts:
+            st.info("No stock in this list has enough history (about 5 years).")
+            return
+        t = st.selectbox("Stock", opts, format_func=lambda x: f"{names.get(x, x)} ({x})", key="ml_pick")
+        single_stock(t, names.get(t, t), closes[t].dropna(), index_series, index_name)
+        if st.button(f"Open {names.get(t, t)}", type="tertiary"):
+            open_stock(t)
+            st.rerun()
+        return
     st.write("A machine-learning model (gradient-boosted trees) looks at 15 price-based signals: momentum, trend, "
              "volatility, fall from high, 52-week position, RSI and how the whole market is doing. It estimates the chance "
              "a stock is higher (or beats the index) in about **3 months**. It is then tested **honestly** on years it never saw.")
@@ -160,7 +173,7 @@ def single_stock(ticker, name, close, index, index_name):
         it was right <b>{r['accuracy']:.0%}</b> of the time. Simple guesses scored up to <b>{best_guess:.0%}</b>
         ("{q}" happened {r['always_up_accuracy']:.0%} of the time).</div>
         <div class="muted" style="margin-top:6px">That test covers only about {r['periods']} separate 3-month periods, so a few lucky
-        calls can swing it a lot. One stock gives far less evidence than the whole-list test on the ML outlook page.</div>
+        calls can swing it a lot. One stock gives far less evidence than testing a whole list of stocks.</div>
         </div>""", unsafe_allow_html=True)
     st.write("")
     fmt = lambda v: "–" if v is None else f"{v:+.1%}"
