@@ -25,7 +25,7 @@ UNIVERSE_URLS = [
 ]
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-UNIVERSE_MAX_AGE_DAYS = 30
+UNIVERSE_MAX_AGE_DAYS = 7   # stock lists refresh weekly, so new listings appear within days
 PRICE_MAX_AGE_HOURS = 12
 
 
@@ -47,7 +47,7 @@ def get_all_nse() -> pd.DataFrame:
             r.raise_for_status()
             df = pd.read_csv(io.StringIO(r.text))
             df.columns = [c.strip() for c in df.columns]
-            df = df[df["SERIES"].str.strip() == "EQ"]
+            df = df[df["SERIES"].str.strip().isin(["EQ", "BE", "BZ"])]  # BE/BZ = trade-for-trade series
             df = df.rename(columns={"SYMBOL": "Symbol", "NAME OF COMPANY": "Company Name"})[["Company Name", "Symbol"]]
             df.to_csv(cache, index=False)
         except Exception:
@@ -110,7 +110,7 @@ def get_universe(name: str) -> pd.DataFrame:
         from core import markets
         if name == "S&P 500":
             return markets.get_sp500()
-        return markets.etf_universe(markets.INDIAN_ETFS if name == "Indian ETFs" else markets.US_ETFS)
+        return markets.get_nse_etfs() if name == "Indian ETFs" else markets.etf_universe(markets.US_ETFS)
     cache = DATA_DIR / f"universe_{name.replace(' ', '_')}.csv"
     if _age_hours(cache) > UNIVERSE_MAX_AGE_DAYS * 24:
         for url in UNIVERSE_URLS:

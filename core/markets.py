@@ -47,7 +47,7 @@ def _age_hours(path):
 
 def get_sp500() -> pd.DataFrame:
     cache = DATA_DIR / "universe_SP500.csv"
-    if _age_hours(cache) > 30 * 24:
+    if _age_hours(cache) > 7 * 24:
         try:
             df = pd.read_csv(SP500_URL)
             df.to_csv(cache, index=False)
@@ -103,3 +103,89 @@ def currency_of(ticker: str) -> str:
         pd.Series(known, name="currency").to_csv(cache)
     code = known[ticker]
     return CURRENCY_SYMBOLS.get(code, f"{code} ")
+
+
+# ---------------- Full lists: every NSE ETF and every US-listed security ----------------
+import io
+
+import requests
+
+NSE_ETF_URL = "https://archives.nseindia.com/content/equities/eq_etfseclist.csv"
+US_LIST_URLS = ["https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
+                "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"]
+LIST_MAX_AGE_HOURS = 7 * 24
+
+
+def get_nse_etfs() -> pd.DataFrame:
+    """All ETFs listed on NSE (~350), refreshed weekly. Popular ones keep their friendly names."""
+    cache = DATA_DIR / "universe_NSE_ETFs.csv"
+    if _age_hours(cache) > LIST_MAX_AGE_HOURS:
+        try:
+            r = requests.get(NSE_ETF_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+            df = pd.read_csv(io.StringIO(r.text))
+            df.columns = [c.strip() for c in df.columns]
+            friendly = {t: n for t, n, _ in INDIAN_ETFS}
+            sym = df["Symbol"].str.strip()
+            out = pd.DataFrame({"Symbol": sym, "Ticker": sym + ".NS",
+                                "Industry": df["Underlying Asset"].fillna("").str.strip()})
+            out["Company Name"] = [friendly.get(t, f"{s} ETF ({u})" if u else f"{s} ETF")
+                                   for t, s, u in zip(out["Ticker"], out["Symbol"], out["Industry"])]
+            out.to_csv(cache, index=False)
+        except Exception:
+            pass
+    if not cache.exists():
+        return etf_universe(INDIAN_ETFS)
+    df = pd.read_csv(cache)
+    df["Industry"] = df["Industry"].fillna("")
+    return df[["Company Name", "Industry", "Symbol", "Ticker"]]
+
+
+def get_us_all() -> pd.DataFrame:
+    """Every stock and ETF listed on US exchanges (Nasdaq, NYSE, NYSE American, Cboe...), refreshed weekly.
+    Source: Nasdaq Trader symbol directory (free)."""
+    cache = DATA_DIR / "universe_US_all.csv"
+    if _age_hours(cache) > LIST_MAX_AGE_HOURS:
+        try:
+            frames = []
+            for url in US_LIST_URLS:
+                d = pd.read_csv(io.StringIO(requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30).text),
+                                sep="|", dtype=str)
+                d = d[d["Test Issue"] == "N"]
+                sym_col = "Symbol" if "Symbol" in d.columns else "ACT Symbol"
+                frames.append(pd.DataFrame({"Symbol": d[sym_col], "name": d["Security Name"], "ETF": d["ETF"]}))
+            df = pd.concat(frames).dropna(subset=["Symbol"])
+            df = df[~df["Symbol"].str.contains(r"[\$\^]|File Creation", regex=True)]
+            name = df["name"].str.replace(r"\s+-\s+.*$", "", regex=True)
+            name = name.str.replace(r"\s+(Common Stock|Ordinary Shares|Class [A-Z] Common Stock|American Depositary Shares.*)$",
+                                    "", regex=True)
+            out = pd.DataFrame({"Company Name": name.str.strip(), "Industry": df["ETF"].map({"Y": "ETF"}).fillna(""),
+                                "Symbol": df["Symbol"], "Ticker": df["Symbol"].str.replace(".", "-", regex=False)})
+            out.drop_duplicates("Ticker").to_csv(cache, index=False)
+        except Exception:
+            pass
+    if not cache.exists():
+        return pd.DataFrame(columns=["Company Name", "Industry", "Symbol", "Ticker"])
+    df = pd.read_csv(cache, dtype=str)
+    df["Industry"] = df["Industry"].fillna("")
+    return df
+
+
+_ETF_SET = None
+
+
+def is_etf(ticker: str, name: str = "") -> bool:
+    """True for any ETF we know about (curated lists, all NSE ETFs, all US-listed ETFs)."""
+    global _ETF_SET
+    if _ETF_SET is None:
+        s = set(ETF_TICKERS)
+        try:
+            s |= set(get_nse_etfs()["Ticker"])
+        except Exception:
+            pass
+        try:
+            us = get_us_all()
+            s |= set(us.loc[us["Industry"] == "ETF", "Ticker"])
+        except Exception:
+            pass
+        _ETF_SET = s
+    return ticker in _ETF_SET or any(k in name.upper() for k in (" ETF", "BEES"))

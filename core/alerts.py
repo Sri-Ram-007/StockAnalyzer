@@ -172,6 +172,12 @@ def build_message(rules: dict | None = None) -> str:
     lines += ["", "<b>🔔 Alerts</b>"] + [f"• {a}" for a in alerts] if alerts else ["", "No new alerts today."]
     if rules.get("include_ipos", True):
         lines += ipo_lines()
+    try:  # tell the user if the monthly insurance-data update could not run
+        st = json.loads((DATA_DIR / "insurance" / "update_status.json").read_text())
+        if st.get("result", "").startswith("failed"):
+            lines += ["", f"⚠️ Insurance data update: {st['result']}"]
+    except Exception:
+        pass
     lines += ["", "<i>Educational tool, not investment advice.</i>"]
     return "\n".join(lines)
 

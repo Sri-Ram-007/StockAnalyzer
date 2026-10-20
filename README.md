@@ -97,3 +97,12 @@ Private files that never leave your computer (see `.gitignore`): `data/alerts_co
   no-claim bonus, sub-limits) and term-plan quote comparison, combined with the insurer's track record.
 - Update yearly: download the new handbook zip from https://irdai.gov.in/handbook-of-indian-insurance, extract it, then
   `python -m core.insurance_data "<extracted folder>" 2025-26`.
+
+## Coverage and automatic updates
+- **Search**: India: every NSE stock (EQ, BE, BZ series), every BSE-only stock and all ~355 NSE ETFs.
+  US: every US-listed stock and ETF (~12,900, Nasdaq Trader directory). Global: anything on Yahoo Finance.
+  Mutual funds: every open-ended scheme from AMFI. NSE SME (Emerge) stocks are not included: free price data is not available.
+- **Lists refresh weekly** (stocks, ETFs), **daily** (mutual funds) and **hourly** (IPOs).
+- **Insurance data updates itself**: `.github/workflows/update_insurance.yml` checks IRDAI on the 3rd of every month,
+  rebuilds the insurer scores when a new handbook is published, and saves them. If the new tables cannot be processed,
+  the old data is kept and the daily report mentions it. Run `python update_insurance.py` to check by hand.

@@ -13,7 +13,7 @@ from core.data import (ALL_NSE, BSE_ONLY, get_all_nse, get_bse_only, get_ohlc, g
 from core.fundamentals import (DEFAULT_WEIGHTS, FUND_DIR, WEIGHT_LEVELS, fetch_many, get_fundamentals,
                                health_checks, recovery_score, score_label)
 from core.funds import category_table, crash_recoveries, fund_metrics, get_fund_list, get_nav
-from core.markets import ETF_TICKERS, currency_of, global_search
+from core.markets import ETF_TICKERS, currency_of, get_nse_etfs, get_us_all, global_search, is_etf as known_etf
 import insurance_page
 import ipo_page
 from core.funds import sip_simulation
@@ -110,6 +110,16 @@ def load_all_nse():
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_bse_only():
     return get_bse_only()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_nse_etfs():
+    return get_nse_etfs()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_us_all():
+    return get_us_all()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -265,6 +275,16 @@ if market in ("India", "US", "Global"):
                  **all_nse.set_index("Ticker")["Company Name"].to_dict(), **names}
         industries = {**bse_only.set_index("Ticker")["Industry"].to_dict(),
                       **all_nse.set_index("Ticker")["Industry"].to_dict(), **industries}
+        nse_etfs = load_nse_etfs()
+        names = {**nse_etfs.set_index("Ticker")["Company Name"].to_dict(), **names}
+        extra_search = set(all_nse["Ticker"]) | set(bse_only["Ticker"]) | set(nse_etfs["Ticker"])
+    elif market == "US":
+        us_all = load_us_all()
+        names = {**us_all.set_index("Ticker")["Company Name"].to_dict(), **names}
+        industries = {**us_all.set_index("Ticker")["Industry"].to_dict(), **industries}
+        extra_search = set(us_all["Ticker"])
+    else:
+        extra_search = set()
     names = {**names, **ss.extra_names}
     is_etf_list = "ETF" in list_name
     cur = cfg["cur"]
@@ -275,7 +295,7 @@ if market in ("India", "US", "Global"):
         q = s1.text_input("Search", placeholder="🔍  Search any stock or ETF worldwide, e.g. Toyota, Samsung, Nestle, VOO",
                           label_visibility="collapsed")
     else:
-        search_list = sorted(set(closes.columns) | (set(all_nse["Ticker"]) | set(bse_only["Ticker"]) if market == "India" else set()),
+        search_list = sorted(set(closes.columns) | extra_search,
                              key=lambda t: names.get(t, t))
         pick = s1.selectbox("Search", search_list, index=None, label_visibility="collapsed",
                             placeholder=f"🔍  Search {len(search_list):,} {'NSE & BSE' if market == 'India' else 'US'} stocks and ETFs",
@@ -535,7 +555,7 @@ if market in ("India", "US", "Global"):
         now = current_drawdown(s)
         price, prev = float(s.iloc[-1]), float(s.iloc[-2])
         chg = price / prev - 1
-        is_etf = t in ETF_TICKERS or any(k in names.get(t, "").upper() for k in (" ETF", "BEES"))
+        is_etf = known_etf(t, names.get(t, ""))
 
         top_l, top_r = st.columns([5, 1.4])
         top_l.markdown(f"### {names.get(t, t)}")
