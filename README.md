@@ -61,3 +61,13 @@ Private files that never leave your computer (see `.gitignore`): `data/alerts_co
 - Result when built (Oct 2026): **no real edge** on Nifty 100 or S&P 500 (AUC about 0.50). Predictions are therefore hidden
   behind a warning. Re-train any time with the latest prices.
 - Models and reports are saved in `data/models/`.
+
+## IPOs
+- **🆕 IPOs → Open & upcoming**: Indian IPOs open now, forthcoming and just closed (NSE), with price band and live
+  subscription (e.g. "31.8x subscribed").
+- **Recent listings**: every IPO listed in the last 6 months to 5 years, with listing-day gain and returns since,
+  all measured from the issue price. Mainboard / SME filter. Click to open the stock.
+- **How IPOs perform**: evidence from ~950 NSE IPOs since 2016: share listing above issue price, share still above after
+  1 year, whether big listing pops last, and the spread of 1-year returns.
+- **US IPOs**: Nasdaq calendar (upcoming, recently priced with performance, filed), SPACs hidden by default.
+- Data: NSE public IPO APIs, Nasdaq IPO calendar, Yahoo Finance prices. No keys.

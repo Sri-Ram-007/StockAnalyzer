@@ -14,6 +14,7 @@ from core.fundamentals import (DEFAULT_WEIGHTS, FUND_DIR, WEIGHT_LEVELS, fetch_m
                                health_checks, recovery_score, score_label)
 from core.funds import category_table, crash_recoveries, fund_metrics, get_fund_list, get_nav
 from core.markets import ETF_TICKERS, currency_of, global_search
+import ipo_page
 import ml_page
 import portfolio_page
 from core.recovery import (YEAR, base_rates, biggest_one_day_drop, current_drawdown, history_threshold,
@@ -30,7 +31,7 @@ MARKETS = {
     "US": {"label": "🇺🇸 US", "lists": ["S&P 500", "US ETFs"], "default": "S&P 500", "cur": "$", "benchmark": "^GSPC",
            "indices": [("S&P 500", "^GSPC"), ("NASDAQ", "^IXIC"), ("DOW JONES", "^DJI")]},
 }
-TOP = {"India": "India", "US": "US", "Funds": "Mutual Funds", "Global": "🌍 Global", "Portfolio": "💼 Portfolio"}
+TOP = {"India": "India", "US": "US", "Funds": "Mutual Funds", "Global": "🌍 Global", "IPO": "🆕 IPOs", "Portfolio": "💼 Portfolio"}
 
 st.markdown(f"""
 <style>
@@ -177,7 +178,7 @@ mk = h2.segmented_control("Market", list(TOP), default=ss.market, format_func=la
                           key=f"mk_{ss.market}", label_visibility="collapsed")
 if mk and mk != ss.market:
     ss.market = mk
-    ss.page = {"Funds": "Explore", "Global": "Search", "Portfolio": "Holdings"}.get(mk, "Explore")
+    ss.page = {"Funds": "Explore", "Global": "Search", "Portfolio": "Holdings", "IPO": "Open & upcoming"}.get(mk, "Explore")
     st.rerun()
 
 market = ss.market
@@ -616,6 +617,9 @@ elif market == "Funds":
     def fpct(v):
         return np.nan if v is None or pd.isna(v) else v * 100
 
+    def fret(v):
+        return "–" if v is None or pd.isna(v) else f"{v:+.1%}"
+
     # ---------- Explore categories ----------
     if ss.page == "Explore":
         st.subheader("Find the best funds in a category")
@@ -638,7 +642,7 @@ elif market == "Funds":
             ct = ct.sort_values(key[0], ascending=key[1], na_position="last").reset_index(drop=True)
             table = pd.DataFrame({
                 "Fund": ct["name"], "Fund house": ct["fund_house"],
-                "1Y": ct["1Y"].map(fpct), "3Y": ct["3Y"].map(fpct), "5Y": ct["5Y"].map(fpct), "10Y": ct["10Y"].map(fpct),
+                "1Y": ct["1Y"].map(fret), "3Y": ct["3Y"].map(fret), "5Y": ct["5Y"].map(fret), "10Y": ct["10Y"].map(fret),
                 "Ups & downs (volatility)": ct["volatility"].map(fpct),
                 "Worst fall ever": ct["max_drawdown"].map(fpct),
                 "Below its high now": ct["current_drawdown"].map(fpct),
@@ -648,7 +652,6 @@ elif market == "Funds":
             st.caption(f"{len(table)} funds. Returns are yearly (CAGR). Click a row to open the fund.")
             ev = st.dataframe(table, hide_index=True, use_container_width=True, height=560, on_select="rerun",
                               selection_mode="single-row", column_config={
-                                  "1Y": pc, "3Y": pc, "5Y": pc, "10Y": pc,
                                   "Ups & downs (volatility)": st.column_config.NumberColumn(format="%.1f%%",
                                       help="How much the NAV swings in a typical year. Lower = smoother ride."),
                                   "Worst fall ever": st.column_config.NumberColumn(format="%.0f%%",
@@ -770,15 +773,21 @@ elif market == "Funds":
             rows = []
             for c, s in navs.items():
                 mm = fund_metrics(s)
-                rows.append({"Fund": fl.set_index("code")["name"].get(c, str(c)), "1Y": fpct(mm["1Y"]), "3Y": fpct(mm["3Y"]),
-                             "5Y": fpct(mm["5Y"]), "10Y": fpct(mm["10Y"]), "Volatility": fpct(mm["volatility"]),
+                rows.append({"Fund": fl.set_index("code")["name"].get(c, str(c)), "1Y": fret(mm["1Y"]), "3Y": fret(mm["3Y"]),
+                             "5Y": fret(mm["5Y"]), "10Y": fret(mm["10Y"]), "Volatility": fpct(mm["volatility"]),
                              "Worst fall": fpct(mm["max_drawdown"]), "Worst 3Y return": fpct(mm["rolling3_min"]),
                              "3Y periods beating 10%": mm["rolling3_pct_above_10"]})
             pc = st.column_config.NumberColumn(format="%.1f%%")
             st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True, column_config={
-                "1Y": pc, "3Y": pc, "5Y": pc, "10Y": pc, "Volatility": pc, "Worst fall": pc, "Worst 3Y return": pc,
+                "Volatility": pc, "Worst fall": pc, "Worst 3Y return": pc,
                 "3Y periods beating 10%": st.column_config.ProgressColumn(format="percent", min_value=0, max_value=1)})
         st.caption("Returns are yearly (CAGR). Past returns do not guarantee future returns. Not investment advice.")
+
+# ================================================================
+#                              IPOs
+# ================================================================
+elif market == "IPO":
+    ipo_page.render(ss, open_stock)
 
 # ================================================================
 #                          PORTFOLIO + ALERTS
