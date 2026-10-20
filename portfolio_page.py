@@ -179,6 +179,8 @@ def alerts_page(ss):
         day_move = c2.number_input("Moves more than (% in one day)", 0.0, 50.0, float(rules["day_move"]), 0.5)
         loss = c3.number_input("Holding loss crosses (%)", 0.0, 90.0, float(rules["holding_loss"]), 1.0)
         daily = st.toggle("Include a daily portfolio summary", value=rules["daily_summary"])
+        ipos = st.toggle("Include Indian IPOs (opening, open, just closed with subscription, just listed)",
+                         value=rules.get("include_ipos", True))
         names_map = {h["ident"]: h["name"] for h in load_holdings()}
         names_map.update({t: t for t in ss.watchlist if t not in names_map})
         st.markdown("Price targets (optional): alert when the price rises above or falls below a level you choose.")
@@ -190,7 +192,7 @@ def alerts_page(ss):
         if st.button("Save alert rules", type="primary"):
             targets = [{k: (None if pd.isna(v) else v) for k, v in r.items()} for r in tg.dropna(subset=["ident"]).to_dict("records")]
             save_rules({"fall_from_high": sorted(falls), "day_move": day_move, "holding_loss": loss,
-                        "daily_summary": daily, "targets": targets})
+                        "daily_summary": daily, "include_ipos": ipos, "targets": targets})
             st.success("Saved.")
 
     with st.container(border=True):

@@ -165,3 +165,45 @@ def category_table(fund_list: pd.DataFrame, category: str, direct=True, growth=T
     if not out:
         return pd.DataFrame()
     return f[["code", "name", "fund_house"]].merge(pd.DataFrame(out), on="code")
+
+
+# ---------------- SIP calculator ----------------
+def xirr(cashflows: list[tuple[pd.Timestamp, float]]) -> float | None:
+    """Yearly return for irregular cash flows (money in negative, value out positive), by bisection."""
+    if len(cashflows) < 2:
+        return None
+    t0 = cashflows[0][0]
+
+    def npv(rate):
+        return sum(cf / (1 + rate) ** ((d - t0).days / 365.0) for d, cf in cashflows)
+
+    lo, hi = -0.99, 10.0
+    if npv(lo) * npv(hi) > 0:
+        return None
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if npv(lo) * npv(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
+
+
+def sip_simulation(nav: pd.Series, monthly: float, start: pd.Timestamp) -> dict:
+    """Invest `monthly` rupees on the first NAV date of every month from `start`, using real past NAVs."""
+    s = nav[nav.index >= start].dropna()
+    if len(s) < 2:
+        return {}
+    buy_dates = s.groupby([s.index.year, s.index.month]).head(1).index
+    units = monthly / s.loc[buy_dates]
+    cum_units = units.cumsum().reindex(s.index, method="ffill").fillna(0)
+    cum_invested = pd.Series(monthly, index=buy_dates).cumsum().reindex(s.index, method="ffill").fillna(0)
+    value = cum_units * s
+    flows = [(d, -monthly) for d in buy_dates] + [(s.index[-1], float(value.iloc[-1]))]
+    lump_units = monthly * len(buy_dates) / s.iloc[0]
+    return {
+        "installments": len(buy_dates), "invested": float(cum_invested.iloc[-1]), "value": float(value.iloc[-1]),
+        "units": float(units.sum()), "xirr": xirr(flows),
+        "lump_value": float(lump_units * s.iloc[-1]),  # same total put in on day one instead
+        "history": pd.DataFrame({"Invested": cum_invested, "Value": value}),
+    }

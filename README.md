@@ -71,3 +71,13 @@ Private files that never leave your computer (see `.gitignore`): `data/alerts_co
   1 year, whether big listing pops last, and the spread of 1-year returns.
 - **US IPOs**: Nasdaq calendar (upcoming, recently priced with performance, filed), SPACs hidden by default.
 - Data: NSE public IPO APIs, Nasdaq IPO calendar, Yahoo Finance prices. No keys.
+
+## More features
+- **BSE-only stocks**: about 2,700 companies listed only on BSE (matched against NSE by ISIN) are searchable, and
+  "BSE-only (over ₹500 Cr)" is a list option in India settings. Yahoo tickers use `SYMBOL.BO`.
+- **Sectors** (India and US): median 1-month / 3-month / 1-year return, fall from high and share above the 200-day
+  average for every sector of the Nifty 500 / S&P 500. Click a sector to see its stocks.
+- **Latest news** on every stock page (Google News RSS, refreshed hourly).
+- **SIP calculator** on every fund page: monthly amount and start period, using real past NAVs; shows money put in,
+  value today, gain, XIRR and a lump-sum comparison.
+- **IPOs in the daily report**: Indian IPOs opening this week, open now, just closed (with subscription) and just listed.

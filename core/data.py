@@ -17,6 +17,7 @@ UNIVERSES = {
     "Nifty 200": "ind_nifty200list.csv",
     "Nifty 500": "ind_nifty500list.csv",
     "All NSE stocks": None,
+    "BSE-only (over ₹500 Cr)": None,
 }
 UNIVERSE_URLS = [
     "https://archives.nseindia.com/content/indices/{}",
@@ -63,6 +64,38 @@ def get_all_nse() -> pd.DataFrame:
     return df[["Company Name", "Industry", "Symbol", "Ticker"]]
 
 
+BSE_ONLY = "BSE-only (over ₹500 Cr)"
+BSE_URL = ("https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w?Group=&Scripcode=&industry=&segment=Equity"
+           "&status=Active")
+
+
+def get_bse_only() -> pd.DataFrame:
+    """Companies listed on BSE but not on NSE (matched by ISIN), refreshed monthly.
+    Yahoo Finance tickers for BSE use the BSE symbol plus '.BO'."""
+    cache = DATA_DIR / "universe_BSE_only.csv"
+    if _age_hours(cache) > UNIVERSE_MAX_AGE_DAYS * 24:
+        try:
+            r = requests.get(BSE_URL, headers={**HEADERS, "Referer": "https://www.bseindia.com/",
+                                               "Origin": "https://www.bseindia.com"}, timeout=40)
+            b = pd.DataFrame(r.json())
+            nse_raw = requests.get(ALL_NSE_URL, headers=HEADERS, timeout=30).text
+            nse = pd.read_csv(io.StringIO(nse_raw))
+            nse.columns = [c.strip() for c in nse.columns]
+            only = b[~b["ISIN_NUMBER"].isin(set(nse["ISIN NUMBER"].str.strip()))]
+            out = pd.DataFrame({"Company Name": only["Scrip_Name"].str.replace(r"-\$$", "", regex=True).str.strip(),
+                                "Industry": only["INDUSTRY"].fillna(""), "Symbol": only["scrip_id"].str.strip(),
+                                "Ticker": only["scrip_id"].str.strip() + ".BO",
+                                "MarketCapCr": pd.to_numeric(only["Mktcap"], errors="coerce")})
+            out.to_csv(cache, index=False)
+        except Exception:
+            pass
+    if not cache.exists():
+        return pd.DataFrame(columns=["Company Name", "Industry", "Symbol", "Ticker", "MarketCapCr"])
+    df = pd.read_csv(cache)
+    df["Industry"] = df["Industry"].fillna("")
+    return df
+
+
 def get_universe(name: str) -> pd.DataFrame:
     """Return Company Name, Industry, Symbol and Yahoo ticker for an NSE index.
 
@@ -70,6 +103,9 @@ def get_universe(name: str) -> pd.DataFrame:
     """
     if name == ALL_NSE:
         return get_all_nse()
+    if name == BSE_ONLY:
+        b = get_bse_only()
+        return b[b["MarketCapCr"] > 500][["Company Name", "Industry", "Symbol", "Ticker"]].reset_index(drop=True)
     if name in ("S&P 500", "Indian ETFs", "US ETFs"):
         from core import markets
         if name == "S&P 500":

@@ -25,7 +25,7 @@ from core.portfolio import load_holdings, summary, value_portfolio
 RULES_FILE = DATA_DIR / "alert_rules.json"
 CONFIG_FILE = DATA_DIR / "alerts_config.json"
 DEFAULT_RULES = {"fall_from_high": [20, 30, 40], "day_move": 5, "holding_loss": 15, "targets": [],
-                 "daily_summary": True}
+                 "daily_summary": True, "include_ipos": True}
 YEAR = 252
 
 
@@ -113,6 +113,40 @@ def evaluate(rules: dict | None = None) -> list[str]:
     return alerts
 
 
+def ipo_lines() -> list[str]:
+    """Indian IPOs open now, opening within a week, just closed, and listed in the last week."""
+    from core.ipo import india_open_and_upcoming, india_past_ipos
+    today = pd.Timestamp.now().normalize()
+    try:
+        df = india_open_and_upcoming()
+    except Exception:
+        df = pd.DataFrame()
+    if df.empty:
+        return ["", "<b>🆕 IPOs</b>", "IPO data was not available today (NSE did not respond)."]
+    band = lambda r: str(r["Price band"]).replace("Rs.", "₹")
+    subs = lambda r: "" if pd.isna(r["Subscribed (times)"]) else f", {r['Subscribed (times)']:.1f}× subscribed"
+    open_now = df[(df["Opens"] <= today) & (df["Closes"] >= today)]
+    soon = df[(df["Opens"] > today) & (df["Opens"] <= today + pd.Timedelta(days=7))]
+    closed = df[(df["Closes"] < today) & (df["Closes"] >= today - pd.Timedelta(days=4))]
+    out = []
+    out += [f"• Open now: <b>{r['Company']}</b> ({r['Type']}), closes {r['Closes']:%d %b}, {band(r)}{subs(r)}" for _, r in open_now.iterrows()]
+    out += [f"• Opens {r['Opens']:%d %b}: <b>{r['Company']}</b> ({r['Type']}), {band(r)}" for _, r in soon.iterrows()]
+    out += [f"• Just closed: <b>{r['Company']}</b>{subs(r)}" for _, r in closed.iterrows()]
+    try:
+        past = india_past_ipos()
+        recent = past[past["listing_date"] >= today - pd.Timedelta(days=7)]
+        for _, r in recent.iterrows():
+            o = get_ohlc(r["Ticker"])
+            if len(o):
+                gain = float(o["Close"].iloc[0]) / r["issue_price"] - 1
+                now = float(o["Close"].iloc[-1]) / r["issue_price"] - 1
+                out.append(f"• Listed {r['listing_date']:%d %b}: <b>{r['Company']}</b> ({r['Type']}) "
+                           f"{gain:+.0%} on listing day, now {now:+.0%} vs issue price ₹{r['issue_price']:,.0f}")
+    except Exception:
+        pass
+    return ["", "<b>🆕 IPOs</b>"] + (out or ["No IPOs opening, closing or listing this week."])
+
+
 def inr(x: float, signed: bool = False) -> str:
     x = 0.0 if abs(x) < 0.5 else x
     sign = "-" if x < 0 else ("+" if signed and x > 0 else "")
@@ -136,6 +170,8 @@ def build_message(rules: dict | None = None) -> str:
                 lines.append(f"Best today: {best['name']} {best['day_pct']:+.2%} · Worst: {worst['name']} {worst['day_pct']:+.2%}")
     alerts = evaluate(rules)
     lines += ["", "<b>🔔 Alerts</b>"] + [f"• {a}" for a in alerts] if alerts else ["", "No new alerts today."]
+    if rules.get("include_ipos", True):
+        lines += ipo_lines()
     lines += ["", "<i>Educational tool, not investment advice.</i>"]
     return "\n".join(lines)
 

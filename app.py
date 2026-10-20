@@ -8,13 +8,16 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from core.data import (ALL_NSE, get_all_nse, get_ohlc, get_prices, get_universe, last_updated,
+from core.data import (ALL_NSE, BSE_ONLY, get_all_nse, get_bse_only, get_ohlc, get_prices, get_universe, last_updated,
                        load_watchlist, save_watchlist)
 from core.fundamentals import (DEFAULT_WEIGHTS, FUND_DIR, WEIGHT_LEVELS, fetch_many, get_fundamentals,
                                health_checks, recovery_score, score_label)
 from core.funds import category_table, crash_recoveries, fund_metrics, get_fund_list, get_nav
 from core.markets import ETF_TICKERS, currency_of, global_search
 import ipo_page
+from core.funds import sip_simulation
+from core.news import get_news, news_query
+from core.sectors import sector_table
 import ml_page
 import portfolio_page
 from core.recovery import (YEAR, base_rates, biggest_one_day_drop, current_drawdown, history_threshold,
@@ -25,7 +28,7 @@ st.set_page_config(page_title="Stock Analyzer", page_icon="📈", layout="wide",
 GREEN, RED, AMBER, MUTED = "#1a7f5a", "#d63a3a", "#b7791f", "#6b7280"
 
 MARKETS = {
-    "India": {"label": "🇮🇳 India", "lists": ["Nifty 50", "Nifty 100", "Nifty 200", "Nifty 500", ALL_NSE, "Indian ETFs"],
+    "India": {"label": "🇮🇳 India", "lists": ["Nifty 50", "Nifty 100", "Nifty 200", "Nifty 500", ALL_NSE, BSE_ONLY, "Indian ETFs"],
               "default": "Nifty 100", "cur": "₹", "benchmark": "^NSEI",
               "indices": [("NIFTY 50", "^NSEI"), ("SENSEX", "^BSESN"), ("BANK NIFTY", "^NSEBANK")]},
     "US": {"label": "🇺🇸 US", "lists": ["S&P 500", "US ETFs"], "default": "S&P 500", "cur": "$", "benchmark": "^GSPC",
@@ -89,6 +92,16 @@ def load_base_rates(name, _closes, version):
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_all_nse():
     return get_all_nse()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_bse_only():
+    return get_bse_only()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_news(query, india):
+    return get_news(query, india)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -204,8 +217,11 @@ if market in ("India", "US", "Global"):
     industries = universe.set_index("Ticker")["Industry"].to_dict()
     if market == "India":
         all_nse = load_all_nse()
-        names = {**all_nse.set_index("Ticker")["Company Name"].to_dict(), **names}
-        industries = {**all_nse.set_index("Ticker")["Industry"].to_dict(), **industries}
+        bse_only = load_bse_only()
+        names = {**bse_only.set_index("Ticker")["Company Name"].to_dict(),
+                 **all_nse.set_index("Ticker")["Company Name"].to_dict(), **names}
+        industries = {**bse_only.set_index("Ticker")["Industry"].to_dict(),
+                      **all_nse.set_index("Ticker")["Industry"].to_dict(), **industries}
     names = {**names, **ss.extra_names}
     is_etf_list = "ETF" in list_name
     cur = cfg["cur"]
@@ -216,11 +232,11 @@ if market in ("India", "US", "Global"):
         q = s1.text_input("Search", placeholder="🔍  Search any stock or ETF worldwide, e.g. Toyota, Samsung, Nestle, VOO",
                           label_visibility="collapsed")
     else:
-        search_list = sorted(set(closes.columns) | (set(all_nse["Ticker"]) if market == "India" else set()),
+        search_list = sorted(set(closes.columns) | (set(all_nse["Ticker"]) | set(bse_only["Ticker"]) if market == "India" else set()),
                              key=lambda t: names.get(t, t))
         pick = s1.selectbox("Search", search_list, index=None, label_visibility="collapsed",
-                            placeholder=f"🔍  Search {len(search_list):,} {'NSE' if market == 'India' else 'US'} stocks and ETFs",
-                            format_func=lambda t: f"{names.get(t, t)}  ·  {t.replace('.NS', '')}")
+                            placeholder=f"🔍  Search {len(search_list):,} {'NSE & BSE' if market == 'India' else 'US'} stocks and ETFs",
+                            format_func=lambda t: f"{names.get(t, t)}  ·  {t.replace('.NS', '').replace('.BO', ' (BSE)')}")
         if pick and pick != ss.get(f"last_pick_{market}"):
             ss[f"last_pick_{market}"] = pick
             open_stock(pick)
@@ -239,7 +255,7 @@ if market in ("India", "US", "Global"):
     index_strip(cfg["indices"])
     st.write("")
 
-    pages = ["Explore", "Fallen", "ML", "Watchlist"] if market != "Global" else ["Search", "Watchlist"]
+    pages = ["Explore", "Fallen", "Sectors", "ML", "Watchlist"] if market != "Global" else ["Search", "Watchlist"]
     if ss.ticker and ss.page == "Stock":
         pages.append("Stock")
     nav = st.segmented_control("Menu", pages, default=ss.page if ss.page in pages else pages[0],
@@ -384,6 +400,60 @@ if market in ("India", "US", "Global"):
                 open_stock(res.index[event.selection.rows[0]])
                 st.rerun()
         st.caption("'Recovered' = got back to its old 1-year high within 2 years. Possible splits/demergers hidden. Not investment advice.")
+
+    # ---------- Sectors ----------
+    elif ss.page == "Sectors":
+        st.subheader("Sectors: what's rising, what's fallen most")
+        sec_list = "Nifty 500" if market == "India" else "S&P 500"
+        su = load_universe(sec_list)
+        with st.spinner(f"Loading {sec_list} prices (first time can take a few minutes)…"):
+            sc = load_prices(sec_list, tuple(su["Ticker"]), ss.refresh)
+        sc = sc.loc[:, sc.notna().sum() > 30]
+        sind = su.set_index("Ticker")["Industry"].to_dict()
+        snames = su.set_index("Ticker")["Company Name"].to_dict()
+        tbl, per_stock = sector_table(sc, sind)
+        sort = st.segmented_control("Sort by", ["3 months", "1 month", "1 year", "Fallen most from high", "Today"],
+                                    default="3 months")
+        col = {"3 months": "3m", "1 month": "1m", "1 year": "1y", "Fallen most from high": "below_high",
+               "Today": "today"}[sort or "3 months"]
+        tbl = tbl.sort_values(col, ascending=(col == "below_high"))
+        fig = go.Figure(go.Bar(x=tbl[col] * 100, y=tbl.index, orientation="h",
+                               marker_color=[GREEN if v >= 0 else RED for v in tbl[col]]))
+        fig.update_layout(height=max(320, 26 * len(tbl)), margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="white",
+                          yaxis=dict(autorange="reversed"),
+                          xaxis=dict(title=f"Median {sort or '3 months'} (%)", gridcolor="#f0f0f0"))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        show = pd.DataFrame({"Sector": tbl.index, "Stocks": tbl["stocks"].values,
+                             "Today": tbl["today"].values * 100, "1 month": tbl["1m"].values * 100,
+                             "3 months": tbl["3m"].values * 100, "1 year": tbl["1y"].values * 100,
+                             "Below 1-yr high": tbl["below_high"].values * 100,
+                             "Above 200-day avg": tbl["above_200dma"].values})
+        pc = st.column_config.NumberColumn(format="%+.1f%%")
+        st.caption(f"Each figure is the median of the sector's stocks in the {sec_list}. Click a sector to see its stocks.")
+        ev = st.dataframe(show, hide_index=True, use_container_width=True, on_select="rerun", selection_mode="single-row",
+                          column_config={"Today": pc, "1 month": pc, "3 months": pc, "1 year": pc,
+                                         "Below 1-yr high": st.column_config.NumberColumn(format="%.0f%%"),
+                                         "Above 200-day avg": st.column_config.ProgressColumn(
+                                             format="percent", min_value=0, max_value=1,
+                                             help="Share of the sector's stocks above their 200-day average (an uptrend sign).")})
+        if ev.selection.rows:
+            ss.sector = show.iloc[ev.selection.rows[0]]["Sector"]
+        if ss.get("sector") in tbl.index:
+            st.markdown(f"#### {ss.sector}")
+            ps = per_stock[per_stock["sector"] == ss.sector].sort_values("below_high")
+            stbl = pd.DataFrame({"Name": [snames.get(x, x) for x in ps.index], "Ticker": ps.index,
+                                 "Price": ps["price"].map(lambda v: money(v, cur)),
+                                 "1 month": ps["ret_1m"] * 100, "3 months": ps["ret_3m"] * 100,
+                                 "1 year": ps["ret_1y"] * 100, "Below 1-yr high": ps["below_high"] * 100})
+            ev2 = st.dataframe(stbl, hide_index=True, use_container_width=True, on_select="rerun",
+                               selection_mode="single-row",
+                               column_config={"1 month": pc, "3 months": pc, "1 year": pc,
+                                              "Below 1-yr high": st.column_config.NumberColumn(format="%.0f%%")})
+            if ev2.selection.rows:
+                t_sel = stbl.iloc[ev2.selection.rows[0]]["Ticker"]
+                open_stock(t_sel, snames.get(t_sel))
+                st.rerun()
+        st.caption("Not investment advice.")
 
     # ---------- ML outlook ----------
     elif ss.page == "ML":
@@ -580,6 +650,20 @@ if market in ("India", "US", "Global"):
             st.caption("70+ Strong · 45–69 Mixed · below 45 Weak. The score summarises evidence; it is not a buy or sell signal.")
         st.write("")
         ml_page.stock_box(list_name, t)
+
+        st.write("")
+        st.markdown("#### Latest news")
+        nq, india_news = news_query(names.get(t, t), t)
+        headlines = load_news(nq, india_news)
+        if not headlines:
+            st.caption("No recent headlines found.")
+        else:
+            st.markdown('<div class="insight">' + "".join(
+                f'<div style="padding:7px 0; border-bottom:1px solid #eef0f2"><a href="{h["link"]}" target="_blank" '
+                f'style="color:#111827; text-decoration:none; font-weight:600">{h["title"]}</a><br>'
+                f'<span class="muted">{h["source"]} · {pd.Timestamp(h["date"]):%d %b %Y, %H:%M}</span></div>'
+                for h in headlines) + "</div>", unsafe_allow_html=True)
+            st.caption("Headlines from Google News. Click to read on the publisher's site.")
         st.caption("Prices from Yahoo Finance, adjusted for splits and dividends. Educational tool, not investment advice.")
 
 # ================================================================
@@ -744,6 +828,45 @@ elif market == "Funds":
                     "Back at high on": cr["recovered"].map(lambda d: "Not yet" if pd.isna(d) else f"{d:%d %b %Y}"),
                     "Months from high to recovery": cr["months_peak_to_recovery"].map(lambda v: "–" if pd.isna(v) else f"{v:.0f}"),
                 }), hide_index=True, use_container_width=True)
+
+        st.write("")
+        st.markdown("#### SIP calculator")
+        st.caption("What a monthly SIP would be worth today, using this fund's real past NAVs "
+                   "(bought on the first NAV date of each month).")
+        k1, k2 = st.columns(2)
+        amount = k1.number_input("Monthly SIP (₹)", min_value=100, max_value=1_000_000, value=5000, step=500)
+        max_years = max(1, int((nav_s.index[-1] - nav_s.index[0]).days // 365))
+        span_opts = [y for y in (1, 3, 5, 10, 15) if y <= max_years] + ["Since start"]
+
+        def span_label(v):
+            return v if isinstance(v, str) else f"{v} year{'s' if v > 1 else ''} ago"
+
+        span = k2.segmented_control("Started", span_opts, default=5 if 5 in span_opts else span_opts[0],
+                                    format_func=span_label)
+        start = nav_s.index[0] if span in (None, "Since start") else nav_s.index[-1] - pd.DateOffset(years=int(span))
+        sip = sip_simulation(nav_s, amount, start)
+        if sip:
+            gain = sip["value"] - sip["invested"]
+            xr = sip["xirr"]
+            cards = [("You put in", f"₹{sip['invested']:,.0f}", ""),
+                     ("Worth today", f"₹{sip['value']:,.0f}", cls(gain)),
+                     ("Gain", f"{'+' if gain >= 0 else '-'}₹{abs(gain):,.0f}", cls(gain)),
+                     ("Yearly return (XIRR)", pct(xr, True, 1) if xr is not None else "–", cls(xr or 0))]
+            for c, (lab, val, k) in zip(st.columns(4), cards):
+                c.markdown(f'<div class="idx-card"><div class="idx-name">{lab}</div><div class="idx-val {k}">{val}</div></div>',
+                           unsafe_allow_html=True)
+            h = sip["history"]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=h.index, y=h["Invested"], name="Money put in", line=dict(color="#9ca3af", width=1.5)))
+            fig.add_trace(go.Scatter(x=h.index, y=h["Value"], name="Value of your SIP", line=dict(color=GREEN, width=2),
+                                     fill="tonexty", fillcolor="rgba(26,127,90,0.08)"))
+            fig.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="white", hovermode="x unified",
+                              legend=dict(orientation="h", y=1.1),
+                              yaxis=dict(gridcolor="#f0f0f0", side="right", tickprefix="₹"))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.caption(f"{sip['installments']} monthly instalments from {start:%b %Y}. Putting the same "
+                       f"₹{sip['invested']:,.0f} in all at once on day one would be worth ₹{sip['lump_value']:,.0f} today. "
+                       "XIRR is the yearly return that accounts for each instalment being invested for a different time.")
         st.caption("NAV data from AMFI and mfapi.in. Past returns do not guarantee future returns. Not investment advice.")
 
     # ---------- Compare ----------
