@@ -81,3 +81,9 @@ Private files that never leave your computer (see `.gitignore`): `data/alerts_co
 - **SIP calculator** on every fund page: monthly amount and start period, using real past NAVs; shows money put in,
   value today, gain, XIRR and a lump-sum comparison.
 - **IPOs in the daily report**: Indian IPOs opening this week, open now, just closed (with subscription) and just listed.
+
+## On your phone
+- **Same Wi-Fi**: double-click `Start for Phone (same Wi-Fi).bat`, then open ⚙️ Settings in the app and scan the QR code
+  (or type the shown address, e.g. http://192.168.x.x:8501, in the phone's browser). Allow Python on "Private networks"
+  if Windows asks. Use this on your home Wi-Fi only.
+- The layout adapts to phone screens (wrapping menus, compact market strip).

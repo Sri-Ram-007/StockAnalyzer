@@ -56,6 +56,18 @@ st.markdown(f"""
                border: 3px solid #fff; box-shadow: 0 0 0 1px #d1d5db; }}
   div[data-testid="stButton"] button[kind="tertiary"] {{ justify-content: flex-start; width: 100%; padding: 6px 4px; }}
   div[data-testid="stButton"] button[kind="tertiary"]:hover {{ background: #f3f4f6; }}
+  [data-testid="stButtonGroup"] > div {{ flex-wrap: wrap; }}
+  @media (max-width: 640px) {{
+    .block-container {{ padding-left: .7rem; padding-right: .7rem; padding-top: .6rem; }}
+    .brand {{ font-size: 1.2rem; }}
+    .st-key-idxstrip [data-testid="stHorizontalBlock"] {{ flex-wrap: nowrap !important; gap: .35rem; }}
+    .st-key-idxstrip [data-testid="stColumn"] {{ min-width: 0 !important; width: auto !important; flex: 1 1 0 !important; }}
+    .st-key-idxstrip .idx-card {{ padding: 6px 7px; }}
+    .st-key-idxstrip .idx-name {{ font-size: .62rem; }}
+    .st-key-idxstrip .idx-val {{ font-size: .78rem; }}
+    .st-key-idxstrip .chg {{ display: block; font-size: .7rem; }}
+    .price-big {{ font-size: 1.7rem; }}
+  }}
 </style>""", unsafe_allow_html=True)
 
 
@@ -148,6 +160,35 @@ def cls(x):
     return "up" if x >= 0 else "down"
 
 
+def lan_url():
+    """Address of this app on the home Wi-Fi network, e.g. http://192.168.1.5:8501"""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        return None
+    return f"http://{ip}:{st.get_option('server.port')}"
+
+
+def phone_qr():
+    """Show a QR code for opening the app on a phone on the same Wi-Fi."""
+    url = lan_url()
+    if st.get_option("server.address") not in ("0.0.0.0", "::") or not url:
+        st.caption("📱 To open this on your phone, close this window and start the app with "
+                   "**Start for Phone (same Wi-Fi).bat** instead.")
+        return
+    import io
+    import qrcode
+    buf = io.BytesIO()
+    qrcode.make(url, box_size=6, border=2).save(buf, format="PNG")
+    st.markdown("**📱 Open on your phone**")
+    st.image(buf.getvalue(), width=170)
+    st.caption(f"Scan with your phone camera, or type **{url}** in its browser. The phone must be on the same Wi-Fi.")
+
+
 def index_strip(indices):
     quotes = []
     for name, tk in indices:
@@ -156,7 +197,8 @@ def index_strip(indices):
             last, prev = float(df["Close"].iloc[-1]), float(df["Close"].iloc[-2])
             quotes.append((name, last, last - prev, last / prev - 1))
     if quotes:
-        for c, (name, val, ch, p) in zip(st.columns(len(quotes)), quotes):
+        box = st.container(key="idxstrip")
+        for c, (name, val, ch, p) in zip(box.columns(len(quotes)), quotes):
             c.markdown(f'<div class="idx-card"><div class="idx-name">{name}</div><div class="idx-val">{val:,.2f} '
                        f'<span class="chg {cls(p)}">{ch:+,.2f} ({p:+.2%})</span></div></div>', unsafe_allow_html=True)
 
@@ -251,6 +293,8 @@ if market in ("India", "US", "Global"):
             st.cache_data.clear()
             st.rerun()
         st.caption(f"Prices updated {last_updated(list_name)}. Latest trading day {closes.index.max():%d %b %Y}.")
+        st.divider()
+        phone_qr()
 
     index_strip(cfg["indices"])
     st.write("")
